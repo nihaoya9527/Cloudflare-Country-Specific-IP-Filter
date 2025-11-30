@@ -47,6 +47,16 @@ export default {
         return await handleLoginRequest(request, env, _clientIP);
       }
 
+      // 新增：退出登录后端处理
+      if (_authUrl.pathname === '/auth-logout') {
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 
+            'Content-Type': 'application/json',
+            'Set-Cookie': 'cf_ip_auth=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax; Secure' 
+          }
+        });
+      }
+
       const _cookie = request.headers.get('Cookie') || '';
       const _isAuthorized = await verifyAuthCookie(_cookie, env.password);
 
@@ -95,10 +105,10 @@ export default {
             return await handleGetFastIPsText(env);
           // 新增路由：EdgeTunnel版
           case '/edgetunnel.txt':
-            return await handleGetEdgeTunnelIPs(env);
+            return await handleGetEdgeTunnelIPs(request, env);
           // 新增路由：CFNew版
           case '/cfnew.txt':
-            return await handleGetCFNewIPs(env);
+            return await handleGetCFNewIPs(request, env);
           // --- 新增路由：自定义来源 ---
           case '/save-custom-source':
             return await handleSaveCustomSource(request, env);
@@ -107,7 +117,9 @@ export default {
           // --- 新增路由：删除自定义来源 ---
           case '/delete-custom-source':
             return await handleDeleteCustomSource(request, env);
-          // --------------------------
+          // --- 新增：Token管理 ---
+          case '/admin-token':
+            return await handleAdminToken(request, env);
           default:
             return jsonResponse({ error: 'Endpoint not found' }, 404);
         }
@@ -125,7 +137,9 @@ export default {
     // 获取测速后的IP数据
     const speedData = await getStoredSpeedIPs(env);
     const fastIPs = speedData.fastIPs || [];
-    
+    // --- 新增：获取Token配置 ---
+    const tokenConfig = await getTokenConfig(env);
+    const tokenParam = (tokenConfig && tokenConfig.token) ? `?token=${tokenConfig.token}` : '';
     const html = `<!DOCTYPE html>
   <html lang="zh-CN">
   <head>
@@ -742,6 +756,20 @@ export default {
                   flex-direction: column;
               }
           }
+          
+          /* --- 插入的Token管理样式 --- */
+          .token-section { background: var(--stat-bg); border-radius: 12px; padding: 20px; margin-top: 20px; border: 1px solid var(--card-border); }
+          .token-info { background: var(--card-bg); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid var(--card-border); }
+          .token-display { font-family: 'SF Mono', 'Courier New', monospace; background: #1e293b; color: #f1f5f9; padding: 12px; border-radius: 6px; margin: 8px 0; word-break: break-all; }
+          .form-group { margin-bottom: 16px; text-align: left; }
+          .form-label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-color); }
+          .form-input { width: 100%; padding: 10px 12px; border: 2px solid var(--card-border); border-radius: 8px; font-size: 0.95rem; background: var(--bg-color); color: var(--text-color); transition: border-color 0.3s ease; }
+          .form-input:focus { outline: none; border-color: #3b82f6; }
+          .form-input:disabled { background-color: var(--stat-bg); color: #64748b; }
+          .form-help { font-size: 0.85rem; color: #64748b; margin-top: 4px; }
+          .checkbox-group { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+          .checkbox-label { font-weight: 600; color: var(--text-color); cursor: pointer; }
+
       </style>
   </head>
   <body>
@@ -830,8 +858,8 @@ export default {
                           <span style="font-size: 0.8rem;">▼</span>
                       </a>
                       <div class="dropdown-content">
-                          <a href="/edgetunnel.txt" target="_blank">🔗 在线查看</a>
-                          <a href="/edgetunnel.txt" download="edgetunnel_ips.txt">📥 下载文件</a>
+                          <a href="/edgetunnel.txt${tokenParam}" target="_blank">🔗 在线查看</a>
+                          <a href="/edgetunnel.txt${tokenParam}" download="edgetunnel_ips.txt">📥 下载文件</a>
                       </div>
                   </div>
 
@@ -841,8 +869,8 @@ export default {
                           <span style="font-size: 0.8rem;">▼</span>
                       </a>
                       <div class="dropdown-content">
-                          <a href="/cfnew.txt" target="_blank">🔗 在线查看</a>
-                          <a href="/cfnew.txt" download="cfnew_ips.txt">📥 下载文件</a>
+                          <a href="/cfnew.txt${tokenParam}" target="_blank">🔗 在线查看</a>
+                          <a href="/cfnew.txt${tokenParam}" download="cfnew_ips.txt">📥 下载文件</a>
                       </div>
                   </div>
                   
@@ -855,6 +883,7 @@ export default {
                   <button class="button button-secondary" onclick="refreshData()">
                       🔄 刷新状态
                   </button>
+                  <button class="button button-secondary" onclick="logout()">⏏️ 退出登陆</button>
               </div>
               
               <div class="loading" id="loading">
@@ -863,6 +892,24 @@ export default {
               </div>
               
               <div class="result" id="result"></div>
+
+              <div class="token-section">
+                  <h3>🔑 API Token 状态</h3>
+                  ${tokenConfig ? `
+                  <div class="token-info">
+                      <p><strong>当前 Token:</strong></p>
+                      <div class="token-display">${tokenConfig.token}</div>
+                      <p><strong>过期时间:</strong> ${tokenConfig.neverExpire ? '永不过期' : new Date(tokenConfig.expires).toLocaleString()}</p>
+                      ${tokenConfig.lastUsed ? `<p><strong>最后使用:</strong> ${new Date(tokenConfig.lastUsed).toLocaleString()}</p>` : ''}
+                  </div>
+                  ` : '<p style="margin-bottom: 15px; color: #64748b;">暂无Token配置，请点击下方按钮进行配置。</p>'}
+                  
+                  <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                       <button class="button button-warning" onclick="openTokenModal()">⚙️ 配置 Token</button>
+                       ${tokenConfig ? `<button class="button button-secondary" onclick="copyToken()">📋 复制 Token</button>` : ''}
+                  </div>
+              </div>
+
           </div>
 
           <div class="card">
@@ -956,6 +1003,32 @@ export default {
           </div>
       </div>
 
+      <div class="modal" id="token-modal">
+        <div class="modal-content">
+            <h3>⚙️ Token 配置</h3>
+            <div class="form-group">
+                <label class="form-label">Token 字符串</label>
+                <input type="text" class="form-input" id="token-input" placeholder="输入自定义Token或留空自动生成">
+                <div class="form-help">建议使用复杂的随机字符串，长度至少16位</div>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="never-expire-checkbox" onchange="toggleExpireInput()">
+                <label class="checkbox-label" for="never-expire-checkbox">永不过期</label>
+            </div>
+            <div class="form-group" id="expires-group">
+                <label class="form-label">过期天数</label>
+                <input type="number" class="form-input" id="expires-days" value="30" min="1" max="365">
+                <div class="form-help">设置Token的有效期（1-365天）</div>
+            </div>
+            <div class="modal-buttons">
+                <button class="button" onclick="clearTokenConfig()" style="margin-right: auto; background-color: #ef4444; border-color: #ef4444; color: white;">🗑️ 清除配置</button>
+                <button class="button button-secondary" onclick="closeTokenModal()">取消</button>
+                <button class="button" onclick="generateRandomToken()">🎲 随机生成</button>
+                <button class="button button-success" onclick="saveTokenConfig()">保存</button>
+            </div>
+        </div>
+      </div>
+
       <script>
           // 深浅色模式控制
           function setTheme(mode) {
@@ -1009,6 +1082,134 @@ export default {
           }
 
           // JavaScript 代码
+          let tokenConfig = ${tokenConfig ? JSON.stringify(tokenConfig) : 'null'};
+          let updateController = null; // 用于控制停止
+
+          // --- 新增：Token管理相关JS ---
+          async function logout() {
+            try { await fetch('/auth-logout', { method: 'POST' }); location.reload(); } catch (e) { location.reload(); }
+          }
+
+          function openTokenModal() {
+            document.getElementById('token-modal').style.display = 'flex';
+            if (tokenConfig) {
+                document.getElementById('token-input').value = tokenConfig.token;
+                const neverExpire = tokenConfig.neverExpire || false;
+                document.getElementById('never-expire-checkbox').checked = neverExpire;
+                
+                if (neverExpire) {
+                    document.getElementById('expires-group').style.display = 'none';
+                    document.getElementById('expires-days').disabled = true;
+                } else {
+                    document.getElementById('expires-group').style.display = 'block';
+                    document.getElementById('expires-days').disabled = false;
+                    const expires = new Date(tokenConfig.expires);
+                    const today = new Date();
+                    const diffTime = expires - today;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    document.getElementById('expires-days').value = diffDays > 0 ? diffDays : 30;
+                }
+            } else {
+                document.getElementById('token-input').value = '';
+                document.getElementById('never-expire-checkbox').checked = false;
+                document.getElementById('expires-group').style.display = 'block';
+                document.getElementById('expires-days').disabled = false;
+                document.getElementById('expires-days').value = 30;
+            }
+          }
+
+          function closeTokenModal() {
+            document.getElementById('token-modal').style.display = 'none';
+          }
+          
+          function toggleExpireInput() {
+            const checkbox = document.getElementById('never-expire-checkbox');
+            const expiresGroup = document.getElementById('expires-group');
+            const expiresInput = document.getElementById('expires-days');
+            
+            if (checkbox.checked) {
+                expiresGroup.style.display = 'none';
+                expiresInput.disabled = true;
+            } else {
+                expiresGroup.style.display = 'block';
+                expiresInput.disabled = false;
+            }
+          }
+
+          function generateRandomToken() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result = '';
+            for (let i = 0; i < 32; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            document.getElementById('token-input').value = result;
+          }
+
+async function saveTokenConfig() {
+            const token = document.getElementById('token-input').value.trim();
+            const neverExpire = document.getElementById('never-expire-checkbox').checked;
+            const expiresDays = neverExpire ? null : parseInt(document.getElementById('expires-days').value);
+            
+            if (!token) {
+                showMessage('请输入Token字符串', 'error');
+                return;
+            }
+            
+            if (!neverExpire && (!expiresDays || expiresDays < 1 || expiresDays > 365)) {
+                showMessage('请输入有效的过期天数（1-365）', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/admin-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        token: token,
+                        expiresDays: expiresDays,
+                        neverExpire: neverExpire
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    tokenConfig = data.tokenConfig;
+                    showMessage('Token配置已保存', 'success');
+                    closeTokenModal();
+                    // 刷新页面以更新链接
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showMessage(data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('保存失败: ' + error.message, 'error');
+            }
+          }
+
+          async function clearTokenConfig() {
+            if(!confirm('⚠️ 确定要清除 Token 配置吗？清除后，Token 保护将被移除，您的接口将恢复为【公开访问】状态。')) return;
+            
+            try {
+                const response = await fetch('/admin-token', { method: 'DELETE' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    tokenConfig = null;
+                    showMessage('Token 配置已清除，即将刷新...');
+                    closeTokenModal();
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showMessage(data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('请求失败: ' + error.message, 'error');
+            }
+          }
+          // --------------------------
+
           let speedResults = {};
           let isTesting = false;
           let currentTestIndex = 0;
@@ -1188,12 +1389,29 @@ export default {
               const loading = document.getElementById('loading');
               const result = document.getElementById('result');
               
-              btn.disabled = true;
+              // --- 如果正在更新，则执行停止逻辑 ---
+              if (updateController) {
+                  updateController.abort();
+                  updateController = null;
+                  btn.innerHTML = '🔄 立即更新';
+                  btn.classList.remove('button-warning');
+                  loading.style.display = 'none';
+                  showMessage('🛑 更新已手动停止', 'error');
+                  return;
+              }
+
+              // --- 开始更新逻辑 ---
+              updateController = new AbortController();
+              const signal = updateController.signal;
+
+              btn.innerHTML = '🖐️ 停止更新'; 
+              btn.classList.add('button-warning');
+              // 注意：这里删除了 btn.disabled = true，否则无法点击停止
               loading.style.display = 'block';
               result.style.display = 'none';
               
               try {
-                  const response = await fetch('/update', { method: 'POST' });
+                  const response = await fetch('/update', { method: 'POST', signal: signal });
                   const data = await response.json();
                   
                   if (data.success) {
@@ -1216,6 +1434,7 @@ export default {
                   setTimeout(refreshData, 1000);
                   
               } catch (error) {
+                  if (error.name === 'AbortError') return; // 忽略手动停止的报错
                   result.className = 'result error';
                   result.innerHTML = \`
                       <h3>❌ 请求失败</h3>
@@ -1223,8 +1442,13 @@ export default {
                   \`;
                   result.style.display = 'block';
               } finally {
-                  btn.disabled = false;
-                  loading.style.display = 'none';
+                  // 只有当不是手动停止的时候，才重置按钮
+                  if (updateController && updateController.signal === signal) {
+                      updateController = null;
+                      btn.innerHTML = '🔄 立即更新';
+                      btn.classList.remove('button-warning');
+                      loading.style.display = 'none';
+                  }
               }
           }
 
@@ -1444,7 +1668,20 @@ export default {
   }
 
   // 新增：处理 edgetunnel 版 IP 列表获取 (纯IP，一行一个)
-  async function handleGetEdgeTunnelIPs(env) {
+  async function handleGetEdgeTunnelIPs(request, env) {
+    // --- 门禁检查 ---
+    const tokenConfig = await getTokenConfig(env);
+    if (tokenConfig && tokenConfig.token) {
+        const url = new URL(request.url);
+        if (url.searchParams.get('token') !== tokenConfig.token) {
+            return new Response('需要管理员权限', { 
+                status: 401, 
+                headers: { 'Content-Type': 'text/plain; charset=utf-8' } 
+            });
+        }
+    }
+    // ----------------
+    
     const data = await getStoredSpeedIPs(env);
     const fastIPs = data.fastIPs || [];
     
@@ -1461,7 +1698,20 @@ export default {
   }
 
   // 新增：处理 CFNew 版 IP 列表获取 (IP:443，用逗号隔开)
-  async function handleGetCFNewIPs(env) {
+  async function handleGetCFNewIPs(request, env) {
+    // --- 门禁检查 ---
+    const tokenConfig = await getTokenConfig(env);
+    if (tokenConfig && tokenConfig.token) {
+        const url = new URL(request.url);
+        if (url.searchParams.get('token') !== tokenConfig.token) {
+            return new Response('需要管理员权限', { 
+                status: 401, 
+                headers: { 'Content-Type': 'text/plain; charset=utf-8' } 
+            });
+        }
+    }
+    // ----------------
+
     const data = await getStoredSpeedIPs(env);
     const fastIPs = data.fastIPs || [];
     
@@ -2246,3 +2496,69 @@ export default {
 </html>`;
     return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
+// --- Token 后端逻辑 (新增) ---
+  async function handleAdminToken(request, env) {
+    if (request.method === 'GET') {
+      const config = await getTokenConfig(env);
+      return jsonResponse({ tokenConfig: config });
+    } else if (request.method === 'POST') {
+      try {
+        const { token, expiresDays, neverExpire } = await request.json();
+        
+        if (!token) {
+          return jsonResponse({ error: 'Token不能为空' }, 400);
+        }
+        
+        let expiresDate;
+        if (neverExpire) {
+          expiresDate = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString(); 
+        } else {
+          if (!expiresDays) {
+            return jsonResponse({ error: '过期时间不能为空' }, 400);
+          }
+          if (expiresDays < 1 || expiresDays > 365) {
+            return jsonResponse({ error: '过期时间必须在1-365天之间' }, 400);
+          }
+          expiresDate = new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000).toISOString();
+        }
+        
+        const tokenConfig = {
+          token: token.trim(),
+          expires: expiresDate,
+          createdAt: new Date().toISOString(),
+          lastUsed: null,
+          neverExpire: neverExpire || false
+        };
+        
+        await env.IP_STORAGE.put('token_config', JSON.stringify(tokenConfig));
+        
+        return jsonResponse({ 
+          success: true, 
+          tokenConfig,
+          message: 'Token更新成功'
+        });
+      } catch (error) {
+        return jsonResponse({ error: error.message }, 500);
+      }
+    } else if (request.method === 'DELETE') {
+      // --- 新增：处理删除请求 ---
+      try {
+          await env.IP_STORAGE.delete('token_config');
+          return jsonResponse({ success: true, message: 'Token配置已清除' });
+      } catch (error) {
+          return jsonResponse({ error: error.message }, 500);
+      }
+    } else {
+      return jsonResponse({ error: 'Method not allowed' }, 405);
+    }
+  }
+
+  // 获取Token配置
+  async function getTokenConfig(env) {
+    try {
+      const config = await env.IP_STORAGE.get('token_config');
+      return config ? JSON.parse(config) : null;
+    } catch (error) {
+      return null;
+    }
+  }  
