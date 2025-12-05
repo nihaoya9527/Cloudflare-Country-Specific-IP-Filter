@@ -26,7 +26,8 @@
 - 更改时间格式为24时制并新增年月日显示
 - 增加了Token管理
 - 新增CFnew自动更新引用url
-- 新增支持国旗 国家
+- 更改测速方式为HTTP RTT测速，通常比单纯的Ping值要大，但更符合实际网页加载感受
+- 新增支持国旗 国家 地区
 
 ![alt text](image/Light1.png)
 ![alt text](image/Light2.png)
