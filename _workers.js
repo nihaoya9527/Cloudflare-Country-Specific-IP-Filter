@@ -15,6 +15,23 @@
 // 新增CFnew自动更新引用url
 // 更改测速方式为HTTP RTT测速，通常比单纯的Ping值要大，但更符合实际网页加载感受
 // 新增国旗 国家 地区
+// // // // // // // // // // // // // // // // 
+//        部署完本项目马上要做的事！！！！！！！
+// // // // // // // // // // // // // // // // 
+// 创建一个KV命名空间，名字随意，环境变量为：IP_STORAGE，绑定此项目
+// 创建一个变量和机密，变量名称为：password，值填写你自定义的密码
+// 部署完成且手动更新一次后添加触发事件，推荐Cron 表达式为：0 4,16 * * *
+//
+// 新增页面明暗：浅色/深色/跟随系统
+// 新增自定义数据源
+// 新增CFnew版IP输出方式，方便一键复制
+// 新增环境变量添加密码，且输出结果url不需要密码，方便引用
+// 改变默认edgetunnel输出方式为纯节点，方便结合Sub Store使用
+// 更改时间格式为24时制并新增年月日显示
+// 增加了Token管理
+// 新增CFnew自动更新引用url
+// 更改测速方式为HTTP RTT测速，通常比单纯的Ping值要大，但更符合实际网页加载感受
+// 新增国旗 国家 地区
 // ==========================================
 // 1. 全局配置
 // ==========================================
@@ -310,36 +327,28 @@ async function handleSpeedTest(request, env) {
   if (!ip) return jsonResponse({ error: 'IP parameter is required' }, 400);
   
   try {
-    const hexIP = ipToHex(ip);
-    if (!hexIP) throw new Error('Invalid IP format for hex conversion');
-
-    const testUrl = `https://` + hexIP + `.nip.lfree.org/`;
-    
-    // 第一次请求，用于建立连接（DNS、TCP、TLS握手）并获取colo信息
-    const warmupResponse = await fetch(testUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Cloudflare-IP-Collector/1.0)'
-      }
-    });
-    if (!warmupResponse.ok) throw new Error(`Warmup HTTP ${warmupResponse.status}: ${warmupResponse.statusText}`);
-    const data = await warmupResponse.json();
-    const colo = data.colo || 'UNK';
-    const info = getColoFlag(colo);
-
-    // 第二次请求，利用已建立的连接来测量真实延迟 (RTT)
+    const testUrl = `http://speed.cloudflare.com/cdn-cgi/trace`;
     const startTime = Date.now();
     const response = await fetch(testUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Cloudflare-IP-Collector/1.0)' }
+      headers: {
+        'Host': 'speed.cloudflare.com',
+        'User-Agent': 'Mozilla/5.0 (compatible; Cloudflare-IP-Collector/1.0)'
+      },
+      cf: { resolveOverride: ip }
     });
-    if (!response.ok) throw new Error(`Speedtest HTTP ${response.status}: ${response.statusText}`);
-    await response.text(); // 读取响应体以完成请求
+    
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    
+    const text = await response.text();
     const endTime = Date.now();
+    const colo = (text.match(/colo=([A-Z]+)/) || [])[1] || 'UNK';
+    const info = getColoFlag(colo);
 
     return jsonResponse({
       success: true,
       ip: ip,
       time: new Date().toISOString(),
-      duration: endTime - startTime, // 这是RTT延迟
+      duration: endTime - startTime,
       info: info
     });
   } catch (error) {
@@ -598,36 +607,26 @@ async function autoSpeedTestAndStore(env, ips) {
 
 async function testIPSpeed(ip) {
   try {
-    const hexIP = ipToHex(ip);
-    if (!hexIP) throw new Error('Invalid IP format for hex conversion');
-
-    const testUrl = `https://` + hexIP + `.nip.lfree.org/`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 整体超时从4秒延长到8秒
-
-    // 第一次请求，用于建立连接并获取colo
-    const warmupResponse = await fetch(testUrl, {
+    const startTime = Date.now();
+    const testUrl = `http://speed.cloudflare.com/cdn-cgi/trace`;
+    
+    const response = await fetch(testUrl, {
       headers: {
+        'Host': 'speed.cloudflare.com',
         'User-Agent': 'Mozilla/5.0 (compatible; Cloudflare-IP-Collector/1.0)'
       },
-      signal: controller.signal
+      cf: { resolveOverride: ip },
+      signal: AbortSignal.timeout(3000)
     });
-    if (!warmupResponse.ok) throw new Error(`Warmup HTTP ${warmupResponse.status}`);
-    const data = await warmupResponse.json();
-    const colo = data.colo || 'UNK';
-    const info = getColoFlag(colo);
-
-    // 第二次请求，测量真实延迟 (RTT)
-    const startTime = Date.now();
-    const response = await fetch(testUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Cloudflare-IP-Collector/1.0)' },
-      signal: controller.signal
-    });
-    if (!response.ok) throw new Error(`Speedtest HTTP ${response.status}`);
-    await response.text(); // 读取响应体以完成请求
-    const latency = Date.now() - startTime;
     
-    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const text = await response.text();
+    const endTime = Date.now();
+    const latency = endTime - startTime;
+    const colo = (text.match(/colo=([A-Z]+)/) || [])[1] || 'UNK';
+    const info = getColoFlag(colo);
+    
     return { success: true, ip: ip, latency: latency, info: info };
   } catch (error) {
     return { success: false, ip: ip, error: error.message };
@@ -742,28 +741,17 @@ function tokenErrorResponse() {
 // 6. 工具函数
 // ==========================================
 
-function ipToHex(ip) {
-    const parts = ip.split('.');
-    if (parts.length !== 4) return null;
-    let hex = '';
-    for (let i = 0; i < 4; i++) {
-        const num = parseInt(parts[i]);
-        if (isNaN(num) || num < 0 || num > 255) return null;
-        hex += num.toString(16).padStart(2, '0');
-    }
-    return hex;
-}
-
 function getColoFlag(colo) {
   // Cloudflare 全球节点映射表 (Ultra Full Version)
   const coloMap = {
     // === 东亚 (East Asia) ===
     'HKG': '🇭🇰 香港', 
     'MFM': '🇲🇴 澳门',
-    'TPE': '🇹🇼 台湾 台北', 'KHH': '🇹🇼 台湾 高雄', 'RMQ': '🇹🇼 台湾 台中',
-    'NRT': '🇯🇵 日本 东京 (成田)', 'HND': '🇯🇵 日本 东京 (羽田)', 'KIX': '🇯🇵 日本 大阪 (关西)', 'FUK': '🇯🇵 日本 福冈', 
+    'TPE': '🇹🇼 台湾 台北', 'KHH': '🇹🇼 台湾 高雄',
+    'NRT': '🇯🇵 日本 东京', 'KIX': '🇯🇵 日本 大阪', 'FUK': '🇯🇵 日本 福冈', 
     'NGO': '🇯🇵 日本 名古屋', 'OKA': '🇯🇵 日本 冲绳', 'CTS': '🇯🇵 日本 札幌', 'SDJ': '🇯🇵 日本 仙台',
-    'ICN': '🇰🇷 韩国 首尔 (仁川)', 'GMP': '🇰🇷 韩国 首尔 (金浦)', 'PUS': '🇰🇷 韩国 釜山',
+    'ICN': '🇰🇷 韩国 首尔', 'PUS': '🇰🇷 韩国 釜山',
+    'KDN': '🇰🇵 朝鲜 开城 (极少见)',
     'ULN': '🇲🇳 蒙古 乌兰巴托',
 
     // === 东南亚 (Southeast Asia) ===
@@ -790,11 +778,6 @@ function getColoFlag(colo) {
     'MLE': '🇲🇻 马尔代夫 马累',
     'PBH': '🇧🇹 不丹 帕罗',
 
-    // === 中亚 (Central Asia) ===
-    'ALA': '🇰🇿 哈萨克斯坦 阿拉木图', 'NQZ': '🇰🇿 哈萨克斯坦 阿斯塔纳',
-    'TAS': '🇺🇿 乌兹别克斯坦 塔什干',
-    'FRU': '🇰🇬 吉尔吉斯斯坦 比什凯克',
-
     // === 北美 - 美国 (USA) ===
     // 西部
     'LAX': '🇺🇸 美国 洛杉矶', 'SJC': '🇺🇸 美国 圣何塞', 'SFO': '🇺🇸 美国 旧金山', 'SAN': '🇺🇸 美国 圣地亚哥',
@@ -804,13 +787,13 @@ function getColoFlag(colo) {
     'PHX': '🇺🇸 美国 凤凰城', 'TUS': '🇺🇸 美国 图森',
     'SLC': '🇺🇸 美国 盐湖城', 'BOI': '🇺🇸 美国 博伊西',
     'ABQ': '🇺🇸 美国 阿尔伯克基',
-    'HNL': '🇺🇸 美国 檀香山', 'OGG': '🇺🇸 美国 毛伊岛',
+    'HNL': '🇺🇸 美国 夏威夷', 'OGG': '🇺🇸 美国 毛伊岛',
     'ANC': '🇺🇸 美国 安克雷奇',
 
     // 中部
     'DEN': '🇺🇸 美国 丹佛', 'COS': '🇺🇸 美国 科罗拉多斯普林斯',
     'DFW': '🇺🇸 美国 达拉斯', 'IAH': '🇺🇸 美国 休斯顿', 'AUS': '🇺🇸 美国 奥斯汀', 'SAT': '🇺🇸 美国 圣安东尼奥', 'ELP': '🇺🇸 美国 埃尔帕索', 'MFE': '🇺🇸 美国 麦卡伦',
-    'ORD': '🇺🇸 美国 芝加哥 (奥黑尔)', 'MDW': '🇺🇸 美国 芝加哥 (中途)',
+    'ORD': '🇺🇸 美国 芝加哥', 'MDW': '🇺🇸 美国 芝加哥(中途)',
     'DTW': '🇺🇸 美国 底特律', 'GRR': '🇺🇸 美国 大急流城',
     'MSP': '🇺🇸 美国 明尼阿波利斯',
     'STL': '🇺🇸 美国 圣路易斯', 'MCI': '🇺🇸 美国 堪萨斯城',
@@ -823,8 +806,8 @@ function getColoFlag(colo) {
     'ICT': '🇺🇸 美国 威奇托',
 
     // 东部/南部
-    'JFK': '🇺🇸 美国 纽约 (肯尼迪)', 'LGA': '🇺🇸 美国 纽约 (拉瓜迪亚)', 'EWR': '🇺🇸 美国 纽瓦克', 'BUF': '🇺🇸 美国 水牛城',
-    'IAD': '🇺🇸 美国 华盛顿 (杜勒斯)', 'DCA': '🇺🇸 美国 华盛顿 (里根)', 'BWI': '🇺🇸 美国 巴尔的摩',
+    'JFK': '🇺🇸 美国 纽约 (JFK)', 'LGA': '🇺🇸 美国 纽约 (LGA)', 'EWR': '🇺🇸 美国 新泽西', 'BUF': '🇺🇸 美国 水牛城',
+    'IAD': '🇺🇸 美国 华盛顿特区', 'DCA': '🇺🇸 美国 华盛顿(里根)', 'BWI': '🇺🇸 美国 巴尔的摩',
     'PHL': '🇺🇸 美国 费城', 'PIT': '🇺🇸 美国 匹兹堡',
     'BOS': '🇺🇸 美国 波士顿', 'PVD': '🇺🇸 美国 普罗维登斯', 'MHT': '🇺🇸 美国 曼彻斯特', 'PWM': '🇺🇸 美国 波特兰(ME)',
     'ATL': '🇺🇸 美国 亚特兰大', 'SAV': '🇺🇸 美国 萨凡纳',
@@ -854,7 +837,7 @@ function getColoFlag(colo) {
     'MEX': '🇲🇽 墨西哥城', 'QRO': '🇲🇽 墨西哥 克雷塔罗', 'GDL': '🇲🇽 墨西哥 瓜达拉哈拉', 'MTY': '🇲🇽 墨西哥 蒙特雷',
     'GRU': '🇧🇷 巴西 圣保罗', 'GIG': '🇧🇷 巴西 里约热内卢', 'BSB': '🇧🇷 巴西 巴西利亚', 
     'CWB': '🇧🇷 巴西 库里提巴', 'FOR': '🇧🇷 巴西 福塔莱萨', 'POA': '🇧🇷 巴西 阿雷格里港',
-    'SSA': '🇧🇷 巴西 萨尔瓦多', 'REC': '🇧🇷 巴西 累西腓', 'CNF': '🇧🇷 巴西 贝洛奥里藏特',
+    'SSA': '🇧🇷 巴西 萨尔瓦多', 'REC': '🇧🇷 巴西 获取累西腓', 'CNF': '🇧🇷 巴西 贝洛奥里藏特',
     'EZE': '🇦🇷 阿根廷 布宜诺斯艾利斯', 'COR': '🇦🇷 阿根廷 科尔多瓦', 'MDZ': '🇦🇷 阿根廷 门多萨', 'ROS': '🇦🇷 阿根廷 罗萨里奥',
     'SCL': '🇨🇱 智利 圣地亚哥', 'VAP': '🇨🇱 智利 瓦尔帕莱索',
     'BOG': '🇨🇴 哥伦比亚 波哥大', 'MDE': '🇨🇴 哥伦比亚 麦德林', 'CLO': '🇨🇴 哥伦比亚 卡利', 'BAQ': '🇨🇴 哥伦比亚 巴兰基亚',
@@ -878,15 +861,15 @@ function getColoFlag(colo) {
     'POS': '🇹🇹 特立尼达和多巴哥',
 
     // === 欧洲 (Europe) ===
-    'LHR': '🇬🇧 英国 伦敦 (希思罗)', 'LCY': '🇬🇧 英国 伦敦 (城市)', 'LGW': '🇬🇧 英国 伦敦 (盖特威克)',
+    'LHR': '🇬🇧 英国 伦敦', 'LCY': '🇬🇧 英国 伦敦(城市)', 'LGW': '🇬🇧 英国 伦敦(盖特威克)',
     'MAN': '🇬🇧 英国 曼彻斯特', 'EDI': '🇬🇧 英国 爱丁堡', 'GLA': '🇬🇧 英国 格拉斯哥',
     'BHX': '🇬🇧 英国 伯明翰', 'BRS': '🇬🇧 英国 布里斯托尔', 'CWL': '🇬🇧 英国 卡迪夫', 'BFS': '🇬🇧 英国 贝尔法斯特',
     'DUB': '🇮🇪 爱尔兰 都柏林', 'ORK': '🇮🇪 爱尔兰 科克', 'SNN': '🇮🇪 爱尔兰 香农',
     'FRA': '🇩🇪 德国 法兰克福', 'MUC': '🇩🇪 德国 慕尼黑', 'BER': '🇩🇪 德国 柏林',
     'DUS': '🇩🇪 德国 杜塞尔多夫', 'HAM': '🇩🇪 德国 汉堡', 'STR': '🇩🇪 德国 斯图加特', 'CGN': '🇩🇪 德国 科隆',
-    'CDG': '🇫🇷 法国 巴黎 (戴高乐)', 'ORY': '🇫🇷 法国 巴黎 (奥利)', 'MRS': '🇫🇷 法国 马赛', 'LYS': '🇫🇷 法国 里昂',
+    'CDG': '🇫🇷 法国 巴黎', 'MRS': '🇫🇷 法国 马赛', 'LYS': '🇫🇷 法国 里昂',
     'BOD': '🇫🇷 法国 波尔多', 'TLS': '🇫🇷 法国 图卢兹', 'NCE': '🇫🇷 法国 尼斯', 'SXB': '🇫🇷 法国 斯特拉斯堡', 'NTE': '🇫🇷 法国 南特',
-    'AMS': '🇳🇱 荷兰 阿姆斯特丹 (史基浦)', 'EIN': '🇳🇱 荷兰 埃因霍温', 'RTM': '🇳🇱 荷兰 鹿特丹',
+    'AMS': '🇳🇱 荷兰 阿姆斯特丹', 'EIN': '🇳🇱 荷兰 埃因霍温', 'RTM': '🇳🇱 荷兰 鹿特丹',
     'BRU': '🇧🇪 比利时 布鲁塞尔',
     'LUX': '🇱🇺 卢森堡',
     'ZRH': '🇨🇭 瑞士 苏黎世', 'GVA': '🇨🇭 瑞士 日内瓦',
@@ -926,6 +909,7 @@ function getColoFlag(colo) {
     'TBS': '🇬🇪 格鲁吉亚 第比利斯',
     'EVN': '🇦🇲 亚美尼亚 埃里温',
     'GYD': '🇦🇿 阿塞拜疆 巴库',
+    'LED': '🇷🇺 俄罗斯 圣彼得堡', 'DME': '🇷🇺 俄罗斯 莫斯科', // 注：俄罗斯节点服务状态不稳定
 
     // === 中东 (Middle East) ===
     'DXB': '🇦🇪 阿联酋 迪拜', 'AUH': '🇦🇪 阿联酋 阿布扎比',
@@ -938,6 +922,7 @@ function getColoFlag(colo) {
     'AMM': '🇯🇴 约旦 安曼',
     'BEY': '🇱🇧 黎巴嫩 贝鲁特',
     'BGW': '🇮🇶 伊拉克 巴格达', 'EBL': '🇮🇶 伊拉克 埃尔比勒', 'BSR': '🇮🇶 伊拉克 巴士拉',
+    'IKA': '🇮🇷 伊朗 德黑兰', // 极少见
 
     // === 大洋洲 (Oceania) ===
     'SYD': '🇦🇺 澳洲 悉尼',
@@ -1567,7 +1552,7 @@ async function serveHTML(env) {
             } catch (error) { showMessage('请求失败: ' + error.message, 'error'); }
         }
         let speedResults = {}; let isTesting = false; let currentTestIndex = 0;
-        function showMessage(message, type = 'success') { const result = document.getElementById('result'); result.className = \`result \${type}\`; result.innerHTML = \`<p>\${message}</p>\`; result.style.display = 'block'; setTimeout(() => { result.style.display = 'none'; }, 5000); }
+        function showMessage(message, type = 'success') { const result = document.getElementById('result'); result.className = \`result \${type}\`; result.innerHTML = \`<p>\${message}</p>\`; result.style.display = 'block'; setTimeout(() => { result.style.display = 'none'; }, 3000); }
         function openItdogModal() { document.getElementById('itdog-modal').style.display = 'flex'; }
         function closeItdogModal() { document.getElementById('itdog-modal').style.display = 'none'; }
         async function copyIPsForItdog() { try { const response = await fetch('/itdog-data'); const data = await response.json(); if (data.ips && data.ips.length > 0) { const ipText = data.ips.join('\\n'); await navigator.clipboard.writeText(ipText); showMessage('已复制 IP 列表，请粘贴到 ITDog 网站'); closeItdogModal(); } else { showMessage('没有可测速的IP地址', 'error'); } } catch (error) { console.error('获取 ITDog 数据失败:', error); showMessage('获取 IP 列表失败', 'error'); } }
@@ -1587,9 +1572,8 @@ async function serveHTML(env) {
                 try {
                     const response = await fetch(\`/speedtest?ip=\${ip}\`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
                     if (!response.ok) { throw new Error(\`HTTP \${response.status}\`); }
-                    const data = await response.json();
-                    const latency = data.duration; // 使用后端返回的真实延迟
-                    speedResults[ip] = { latency: latency, success: data.success, time: data.time || '未知', info: data.info };
+                    const data = await response.json(); const endTime = performance.now(); const latency = endTime - startTime;
+                    speedResults[ip] = { latency: latency, success: data.success, time: data.time || '未知' };
                     const speedElement = document.getElementById(\`speed-\${ip.replace(/\./g, '-')}\`); const flagElement = document.getElementById(\`flag-\${ip.replace(/\./g, '-')}\`);
                     if (data.success) {
                         const speedClass = latency < 200 ? 'speed-fast' : latency < 500 ? 'speed-medium' : 'speed-slow';
