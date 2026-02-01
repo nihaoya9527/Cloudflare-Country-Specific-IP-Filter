@@ -11,10 +11,8 @@
     此项目完全公益性质，🚫 禁止商用，请遵守当地法律法规使用
   </p>
 
-  消除所有间隙
-  -->
   <div style="margin-bottom: 20px;">
-    <span style="font-weight: bold; font-size: 16px; vertical-align: middle; margin-right: 8px;">特别鸣谢:</span><a href="https://github.com/cmliu/edgetunnel" target="_blank" style="display: inline-block; text-decoration: none;"><img src="https://img.shields.io/badge/GitHub-CM%E5%A4%A7%E4%BD%AC-181717?style=flat-square&logo=github&logoColor=white" alt="CM大佬" style="vertical-align: -3px;"></a><span style="margin: 0 5px;"></span><a href="https://github.com/byJoey/cfnew" target="_blank" style="display: inline-block; text-decoration: none;"><img src="https://img.shields.io/badge/GitHub-Joey%E5%A4%A7%E4%BD%AC-181717?style=flat-square&logo=github&logoColor=white" alt="Joey大佬" style="vertical-align: -3px;"></a>
+    <span style="vertical-align: middle; font-weight: bold; font-size: 15px; margin-right: 5px;">特别鸣谢：</span><a href="https://github.com/cmliu/edgetunnel" target="_blank" style="text-decoration: none; border: none;"><img src="https://img.shields.io/badge/GitHub-CM%E5%A4%A7%E4%BD%AC-181717?style=flat-square&logo=github&logoColor=white" alt="CM大佬" style="vertical-align: middle;"></a><a href="https://github.com/byJoey/cfnew" target="_blank" style="text-decoration: none; border: none;"><img src="https://img.shields.io/badge/GitHub-Joey%E5%A4%A7%E4%BD%AC-181717?style=flat-square&logo=github&logoColor=white" alt="Joey大佬" style="vertical-align: middle; margin-left: 10px;"></a>
   </div>
 
   <img src="https://github.com/alienwaregf/Cloudflare-Country-Specific-IP-Filter/blob/main/Image/Light.png?raw=true" width="80%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
