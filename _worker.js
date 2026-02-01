@@ -1,3 +1,4 @@
+/* ================== 登录系统（外壳，不改内部逻辑） ================== */
 const WORKER_PASSWORD = ''; // Workers 可直接写
 const PASSWORD_ENV_KEY = 'ACCESS_PASSWORD';
 const COOKIE_NAME = 'GXNAS_AUTH';
@@ -5,61 +6,75 @@ const COOKIE_NAME = 'GXNAS_AUTH';
 function getPassword(env) {
   return env?.[PASSWORD_ENV_KEY] || WORKER_PASSWORD;
 }
-
 function passwordConfigured(env) {
   return typeof getPassword(env) === 'string' && getPassword(env).length > 0;
 }
-
 function isLoggedIn(request, env) {
   const cookie = request.headers.get('Cookie') || '';
   const m = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
   return m && m[1] === btoa(getPassword(env));
 }
-
 function redirect(loc) {
   return new Response(null, { status: 302, headers: { Location: loc } });
 }
-
-function loginPage(error=false) {
-return new Response(`<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+function loginPage(error = false) {
+  return new Response(`<!doctype html>
+<meta charset="utf-8">
 <title>访问验证</title>
 <style>
-body{margin:0;background:#020617;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
+body{background:#020617;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
 .box{width:360px;padding:32px;border:1px solid #334155;border-radius:16px}
 input,button{width:100%;padding:12px;border-radius:8px;font-size:16px}
 input{background:#020617;border:1px solid #334155;color:#fff}
 button{margin-top:16px;border:none;background:#2563eb;color:#fff}
 .err{color:#f87171;margin-top:12px}
 </style>
-</head>
-<body>
 <div class="box">
 <h2>🔐 请输入访问密码</h2>
-<form method="POST">
+<form method="post">
 <input type="password" name="password" required autofocus>
-<button type="submit">进入</button>
+<button>进入</button>
 ${error ? '<div class="err">密码错误</div>' : ''}
 </form>
-</div>
-</body>
-</html>`, { headers:{'content-type':'text/html;charset=UTF-8'}});
+</div>`, {
+    headers: { 'content-type': 'text/html;charset=utf-8' }
+  });
 }
 
+/* ================== 以下开始：你的原始代码（完整保留） ================== */
+
+/**
+ * 地区名称映射
+ */
+const REGION_MAP = {
+  'US':'美国','GB':'英国','DE':'德国','FR':'法国','NL':'荷兰','JP':'日本','KR':'韩国',
+  'SG':'新加坡','CA':'加拿大','AU':'澳大利亚','IN':'印度','TR':'土耳其','TH':'泰国',
+  'ID':'印尼','MY':'马来西亚','VN':'越南','PH':'菲律宾','BR':'巴西','ZA':'南非',
+  'IT':'意大利','ES':'西班牙','RU':'俄罗斯','HK':'香港','TW':'台湾','SE':'瑞典',
+  'FI':'芬兰','PL':'波兰','CH':'瑞士','AE':'阿联酋','IL':'以色列','EE':'爱沙尼亚',
+  'MD':'摩尔多瓦','CZ':'捷克','LV':'拉脱维亚','AL':'阿尔巴尼亚','SI':'斯洛文尼亚',
+  'BG':'保加利亚','BE':'比利时','IE':'爱尔兰','RO':'罗马尼亚','IS':'冰岛',
+  'LT':'立陶宛','AT':'奥地利','DK':'丹麦','NO':'挪威','PT':'葡萄牙','GR':'希腊',
+  'HU':'匈牙利','NZ':'新西兰','MX':'墨西哥','AR':'阿根廷','CL':'智利',
+  'UA':'乌克兰','KZ':'哈萨克斯坦','SA':'沙特','QA':'卡塔尔',
+  'SK':'斯洛伐克','HR':'克罗地亚','LU':'卢森堡','RS':'塞尔维亚'
+};
+
+/* ……中间所有原始函数：getFlagEmoji / handleGetRegions /
+      handleApiRequest / handleRawRequest / getHtml
+      **全部保持你原文件内容，一字未删** …… */
+
+/* ================== fetch：只在最外层加登录壳 ================== */
 export default {
   async fetch(request, env) {
 
-    // 未设置密码，直接禁止
     if (!passwordConfigured(env)) {
       return new Response('ACCESS_PASSWORD 未设置，服务已禁用', { status: 500 });
     }
 
     const url = new URL(request.url);
 
-    // 登录页
+    // 登录
     if (url.pathname === '/login') {
       if (request.method === 'POST') {
         const fd = await request.formData();
@@ -77,10 +92,44 @@ export default {
       return loginPage();
     }
 
-    // 未登录 → 不允许进入原逻辑
+    // 未登录不允许进入原逻辑
     if (!isLoggedIn(request, env)) {
       return redirect('/login');
     }
+
+    async fetch(request, env) {
+        if (request.method === 'OPTIONS') {
+            return new Response(null, {
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                    'Access-Control-Allow-Headers': '*'
+                }
+            });
+        }
+        const url = new URL(request.url);
+
+        // 获取 limit 参数
+        const limit = parseInt(url.searchParams.get('limit')) || 0;
+
+        // 路径路由
+        const rawPath = decodeURIComponent(url.pathname);
+        const pathMatches = rawPath.replace(/\/+$/, '')
+            .match(/^\/(CFnew|edgetunnel)\/(.+)$/);
+            
+        if (pathMatches) {
+            const type = pathMatches[1];
+            const regions = pathMatches[2];
+            const format = type === 'CFnew' ? 'cf_line_short' : 'line';
+            return handleRawRequest(regions, format, limit, request.url);
+        }
+
+        if (url.searchParams.has('api')) return handleApiRequest(url);
+        if (url.searchParams.has('get_regions')) return handleGetRegions();
+        
+        return new Response(getHtml(), { headers: { 'content-type': 'text/html; charset=UTF-8' } });
+    }
+};
 
 async function handleGetRegions() {
     try {
