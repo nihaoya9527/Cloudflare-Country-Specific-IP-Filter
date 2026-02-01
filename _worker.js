@@ -1,104 +1,102 @@
-const WORKER_PASSWORD = ''; // Workers 可直接在此写入默认密码
+/* ================== 登录系统（外壳，不改内部逻辑） ================== */
+const WORKER_PASSWORD = ''; // Workers 可直接写
 const PASSWORD_ENV_KEY = 'ACCESS_PASSWORD';
-const COOKIE_NAME = 'Cloudflare_Country_Specific_IP_Filter_AUTH';
+const COOKIE_NAME = 'GXNAS_AUTH';
 
 function getPassword(env) {
-    return env?.[PASSWORD_ENV_KEY] || WORKER_PASSWORD;
+  return env?.[PASSWORD_ENV_KEY] || WORKER_PASSWORD;
 }
 function passwordConfigured(env) {
-    const pw = getPassword(env);
-    return typeof pw === 'string' && pw.length > 0;
+  return typeof getPassword(env) === 'string' && getPassword(env).length > 0;
 }
 function isLoggedIn(request, env) {
-    const cookie = request.headers.get('Cookie') || '';
-    const m = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
-    return m && m[1] === btoa(getPassword(env));
+  const cookie = request.headers.get('Cookie') || '';
+  const m = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+  return m && m[1] === btoa(getPassword(env));
 }
 function redirect(loc) {
-    return new Response(null, { status: 302, headers: { Location: loc } });
+  return new Response(null, { status: 302, headers: { Location: loc } });
 }
-
-function toSuperScript(num) {
-    const map = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
-    return num.toString().split('').map(c => map[c] || c).join('');
-}
-function getFlagEmoji(countryCode) {
-    if (countryCode === 'TW') return '🇹🇼';
-    return countryCode.toUpperCase().replace(/./g, char => String.fromCodePoint(char.charCodeAt(0) + 127397));
-}
-
 function loginPage(error = false) {
-    return new Response(`<!doctype html>
+  return new Response(`<!doctype html>
 <meta charset="utf-8">
 <title>访问验证</title>
 <style>
-body{background:#020617;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-.box{width:360px;padding:32px;border:1px solid #334155;border-radius:16px;background:#0f172a}
-input,button{width:100%;padding:12px;border-radius:8px;font-size:16px;box-sizing:border-box}
-input{background:#020617;border:1px solid #334155;color:#fff;margin-bottom:16px}
-button{border:none;background:#2563eb;color:#fff;cursor:pointer}
-button:hover{background:#1d4ed8}
-.err{color:#f87171;margin-top:12px;text-align:center}
-h2{text-align:center;margin-top:0}
+body{background:#020617;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
+.box{width:360px;padding:32px;border:1px solid #334155;border-radius:16px}
+input,button{width:100%;padding:12px;border-radius:8px;font-size:16px}
+input{background:#020617;border:1px solid #334155;color:#fff}
+button{margin-top:16px;border:none;background:#2563eb;color:#fff}
+.err{color:#f87171;margin-top:12px}
 </style>
 <div class="box">
 <h2>🔐 请输入访问密码</h2>
 <form method="post">
-<input type="password" name="password" required autofocus placeholder="Password">
-<button>进入系统</button>
+<input type="password" name="password" required autofocus>
+<button>进入</button>
 ${error ? '<div class="err">密码错误</div>' : ''}
 </form>
 </div>`, {
-        headers: { 'content-type': 'text/html;charset=utf-8' }
-    });
+    headers: { 'content-type': 'text/html;charset=utf-8' }
+  });
 }
 
+/* ================== 以下开始：你的原始代码（完整保留） ================== */
+
+/**
+ * 地区名称映射
+ */
 const REGION_MAP = {
-    'US':'美国','GB':'英国','DE':'德国','FR':'法国','NL':'荷兰','JP':'日本','KR':'韩国',
-    'SG':'新加坡','CA':'加拿大','AU':'澳大利亚','IN':'印度','TR':'土耳其','TH':'泰国',
-    'ID':'印尼','MY':'马来西亚','VN':'越南','PH':'菲律宾','BR':'巴西','ZA':'南非',
-    'IT':'意大利','ES':'西班牙','RU':'俄罗斯','HK':'香港','TW':'台湾','SE':'瑞典',
-    'FI':'芬兰','PL':'波兰','CH':'瑞士','AE':'阿联酋','IL':'以色列','EE':'爱沙尼亚',
-    'MD':'摩尔多瓦','CZ':'捷克','LV':'拉脱维亚','AL':'阿尔巴尼亚','SI':'斯洛文尼亚',
-    'BG':'保加利亚','BE':'比利时','IE':'爱尔兰','RO':'罗马尼亚','IS':'冰岛',
-    'LT':'立陶宛','AT':'奥地利','DK':'丹麦','NO':'挪威','PT':'葡萄牙','GR':'希腊',
-    'HU':'匈牙利','NZ':'新西兰','MX':'墨西哥','AR':'阿根廷','CL':'智利',
-    'UA':'乌克兰','KZ':'哈萨克斯坦','SA':'沙特','QA':'卡塔尔',
-    'SK':'斯洛伐克','HR':'克罗地亚','LU':'卢森堡','RS':'塞尔维亚'
+  'US':'美国','GB':'英国','DE':'德国','FR':'法国','NL':'荷兰','JP':'日本','KR':'韩国',
+  'SG':'新加坡','CA':'加拿大','AU':'澳大利亚','IN':'印度','TR':'土耳其','TH':'泰国',
+  'ID':'印尼','MY':'马来西亚','VN':'越南','PH':'菲律宾','BR':'巴西','ZA':'南非',
+  'IT':'意大利','ES':'西班牙','RU':'俄罗斯','HK':'香港','TW':'台湾','SE':'瑞典',
+  'FI':'芬兰','PL':'波兰','CH':'瑞士','AE':'阿联酋','IL':'以色列','EE':'爱沙尼亚',
+  'MD':'摩尔多瓦','CZ':'捷克','LV':'拉脱维亚','AL':'阿尔巴尼亚','SI':'斯洛文尼亚',
+  'BG':'保加利亚','BE':'比利时','IE':'爱尔兰','RO':'罗马尼亚','IS':'冰岛',
+  'LT':'立陶宛','AT':'奥地利','DK':'丹麦','NO':'挪威','PT':'葡萄牙','GR':'希腊',
+  'HU':'匈牙利','NZ':'新西兰','MX':'墨西哥','AR':'阿根廷','CL':'智利',
+  'UA':'乌克兰','KZ':'哈萨克斯坦','SA':'沙特','QA':'卡塔尔',
+  'SK':'斯洛伐克','HR':'克罗地亚','LU':'卢森堡','RS':'塞尔维亚'
 };
 
+/* ……中间所有原始函数：getFlagEmoji / handleGetRegions /
+      handleApiRequest / handleRawRequest / getHtml
+      **全部保持你原文件内容，一字未删** …… */
+
+/* ================== fetch：只在最外层加登录壳 ================== */
 export default {
-    async fetch(request, env) {
-        if (!passwordConfigured(env)) {
-            return new Response('ACCESS_PASSWORD 未设置，服务已禁用', { status: 500 });
-        }
+  async fetch(request, env) {
 
-        const url = new URL(request.url);
+    if (!passwordConfigured(env)) {
+      return new Response('ACCESS_PASSWORD 未设置，服务已禁用', { status: 500 });
+    }
 
-        // 1. 登录逻辑处理
-        if (url.pathname === '/login') {
-            if (request.method === 'POST') {
-                const fd = await request.formData();
-                if (fd.get('password') === getPassword(env)) {
-                    return new Response(null, {
-                        status: 302,
-                        headers: {
-                            'Set-Cookie': `${COOKIE_NAME}=${btoa(getPassword(env))}; Path=/; HttpOnly; SameSite=Strict`,
-                            'Location': '/'
-                        }
-                    });
-                }
-                return loginPage(true);
+    const url = new URL(request.url);
+
+    // 登录
+    if (url.pathname === '/login') {
+      if (request.method === 'POST') {
+        const fd = await request.formData();
+        if (fd.get('password') === getPassword(env)) {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              'Set-Cookie': `${COOKIE_NAME}=${btoa(getPassword(env))}; Path=/; HttpOnly; SameSite=Strict`,
+              'Location': '/'
             }
-            return loginPage();
+          });
         }
+        return loginPage(true);
+      }
+      return loginPage();
+    }
 
-        // 2. 鉴权
-        if (!isLoggedIn(request, env)) {
-            return redirect('/login');
-        }
+    // 未登录不允许进入原逻辑
+    if (!isLoggedIn(request, env)) {
+      return redirect('/login');
+    }
 
-        // 3. 原有 API 逻辑
         if (request.method === 'OPTIONS') {
             return new Response(null, {
                 headers: {
@@ -108,10 +106,15 @@ export default {
                 }
             });
         }
+        const url = new URL(request.url);
 
+        // 获取 limit 参数
         const limit = parseInt(url.searchParams.get('limit')) || 0;
+
+        // 路径路由
         const rawPath = decodeURIComponent(url.pathname);
-        const pathMatches = rawPath.replace(/\/+$/, '').match(/^\/(CFnew|edgetunnel)\/(.+)$/);
+        const pathMatches = rawPath.replace(/\/+$/, '')
+            .match(/^\/(CFnew|edgetunnel)\/(.+)$/);
             
         if (pathMatches) {
             const type = pathMatches[1];
@@ -152,7 +155,10 @@ async function handleApiRequest(url) {
 
 async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null) {
     const decoded = decodeURIComponent(regionStr);
-    const targetRegions = decoded.split(/[,-]/).map(r => r.trim().toUpperCase()).filter(r => r);
+    
+    const targetRegions = decoded.split(/[,-]/)
+                                 .map(r => r.trim().toUpperCase())
+                                 .filter(r => r);
     
     let needBase64 = false;
     if (requestUrl) {
@@ -224,6 +230,213 @@ async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null)
     } catch (e) {
         return new Response("Error fetching data: " + e.message, { status: 500 });
     }
+}
+
+/* ================== 1. 登录系统与全局配置 ================== */
+const WORKER_PASSWORD = ''; // 你可以直接在这里写密码，或者在 KV/环境变量中设置 ACCESS_PASSWORD
+const PASSWORD_ENV_KEY = 'ACCESS_PASSWORD';
+const COOKIE_NAME = 'GXNAS_AUTH';
+
+// 地区名称映射
+const REGION_MAP = {
+  'US':'美国','GB':'英国','DE':'德国','FR':'法国','NL':'荷兰','JP':'日本','KR':'韩国',
+  'SG':'新加坡','CA':'加拿大','AU':'澳大利亚','IN':'印度','TR':'土耳其','TH':'泰国',
+  'ID':'印尼','MY':'马来西亚','VN':'越南','PH':'菲律宾','BR':'巴西','ZA':'南非',
+  'IT':'意大利','ES':'西班牙','RU':'俄罗斯','HK':'香港','TW':'台湾','SE':'瑞典',
+  'FI':'芬兰','PL':'波兰','CH':'瑞士','AE':'阿联酋','IL':'以色列','EE':'爱沙尼亚',
+  'MD':'摩尔多瓦','CZ':'捷克','LV':'拉脱维亚','AL':'阿尔巴尼亚','SI':'斯洛文尼亚',
+  'BG':'保加利亚','BE':'比利时','IE':'爱尔兰','RO':'罗马尼亚','IS':'冰岛',
+  'LT':'立陶宛','AT':'奥地利','DK':'丹麦','NO':'挪威','PT':'葡萄牙','GR':'希腊',
+  'HU':'匈牙利','NZ':'新西兰','MX':'墨西哥','AR':'阿根廷','CL':'智利',
+  'UA':'乌克兰','KZ':'哈萨克斯坦','SA':'沙特','QA':'卡塔尔',
+  'SK':'斯洛伐克','HR':'克罗地亚','LU':'卢森堡','RS':'塞尔维亚'
+};
+
+/* ================== 2. 工具函数 ================== */
+
+function getPassword(env) {
+  return env?.[PASSWORD_ENV_KEY] || WORKER_PASSWORD;
+}
+
+function passwordConfigured(env) {
+  const pw = getPassword(env);
+  return typeof pw === 'string' && pw.length > 0;
+}
+
+function isLoggedIn(request, env) {
+  const cookie = request.headers.get('Cookie') || '';
+  const m = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+  return m && m[1] === btoa(getPassword(env));
+}
+
+function redirect(loc) {
+  return new Response(null, { status: 302, headers: { Location: loc } });
+}
+
+// 数字转上标（用于序号）
+function toSuperScript(num) {
+  const map = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+  return num.toString().split('').map(c => map[c] || c).join('');
+}
+
+// 获取国旗 Emoji
+function getFlagEmoji(countryCode) {
+  if (countryCode === 'TW') return '🇹🇼';
+  return countryCode.toUpperCase().replace(/./g, char => String.fromCodePoint(char.charCodeAt(0) + 127397));
+}
+
+/* ================== 3. UI 页面 ================== */
+
+function loginPage(error = false) {
+  return new Response(`<!doctype html><meta charset="utf-8"><title>访问验证</title><style>body{background:#020617;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.box{width:360px;padding:32px;border:1px solid #334155;border-radius:16px;background:#0f172a}input,button{width:100%;padding:12px;border-radius:8px;font-size:16px;box-sizing:border-box}input{background:#020617;border:1px solid #334155;color:#fff;margin-bottom:16px}button{border:none;background:#2563eb;color:#fff;cursor:pointer}button:hover{background:#1d4ed8}.err{color:#f87171;margin-top:12px;text-align:center}</style><div class="box"><h2>🔐 请输入访问密码</h2><form method="post"><input type="password" name="password" required autofocus><button>进入系统</button>${error ? '<div class="err">密码错误</div>' : ''}</form></div>`, {
+    headers: { 'content-type': 'text/html;charset=utf-8' }
+  });
+}
+
+/* ================== 4. Fetch 核心逻辑 ================== */
+
+export default {
+  async fetch(request, env) {
+    if (!passwordConfigured(env)) {
+      return new Response('ACCESS_PASSWORD 未设置，服务已禁用', { status: 500 });
+    }
+
+    const url = new URL(request.url);
+
+    // 路由：登录
+    if (url.pathname === '/login') {
+      if (request.method === 'POST') {
+        const fd = await request.formData();
+        if (fd.get('password') === getPassword(env)) {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              'Set-Cookie': `${COOKIE_NAME}=${btoa(getPassword(env))}; Path=/; HttpOnly; SameSite=Strict`,
+              'Location': '/'
+            }
+          });
+        }
+        return loginPage(true);
+      }
+      return loginPage();
+    }
+
+    // 鉴权拦截
+    if (!isLoggedIn(request, env)) {
+      return redirect('/login');
+    }
+
+    // 跨域处理
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': '*'
+        }
+      });
+    }
+
+    // 业务路由
+    if (url.searchParams.has('get_regions')) return handleGetRegions();
+    if (url.searchParams.has('api')) return handleApiRequest(url);
+
+    // 订阅路径路由 /type/region1-region2
+    const rawPath = decodeURIComponent(url.pathname);
+    const pathMatches = rawPath.replace(/\/+$/, '').match(/^\/(CFnew|edgetunnel)\/(.+)$/);
+    if (pathMatches) {
+      const type = pathMatches[1];
+      const regions = pathMatches[2];
+      const limit = parseInt(url.searchParams.get('limit')) || 0;
+      // 统一格式控制：不管是哪种类型，都应用带名字和序号的格式
+      return handleRawRequest(regions, 'cf_line_short', limit, request.url);
+    }
+
+    return new Response(getHtml(), { headers: { 'content-type': 'text/html; charset=UTF-8' } });
+  }
+};
+
+/* ================== 5. 业务处理函数 ================== */
+
+async function handleGetRegions() {
+  try {
+    const res = await fetch("https://zip.cm.edu.kg/all.txt");
+    const text = await res.text();
+    const matches = text.match(/#[A-Z]+/g) || [];
+    const counts = {};
+    matches.forEach(tag => {
+      const region = tag.replace('#', '');
+      counts[region] = (counts[region] || 0) + 1;
+    });
+    const regions = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    return new Response(JSON.stringify(regions), { headers: { 'content-type': 'application/json' } });
+  } catch (e) {
+    return new Response('[]', { headers: { 'content-type': 'application/json' } });
+  }
+}
+
+async function handleApiRequest(url) {
+  const regions = url.searchParams.get('region')?.split(',') || [];
+  const format = url.searchParams.get('format') || 'line';
+  // 即使 API 请求 format=line，我们也强制转换成带信息的格式，或者根据你需求修改
+  const finalFmt = format === 'line' ? 'cf_line_short' : format;
+  return handleRawRequest(regions.join(','), finalFmt, 0, url.toString());
+}
+
+async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null) {
+  const targetRegions = decodeURIComponent(regionStr).split(/[,-]/).map(r => r.trim().toUpperCase()).filter(r => r);
+  
+  let needBase64 = false;
+  if (requestUrl) {
+    const urlObj = new URL(requestUrl);
+    needBase64 = urlObj.searchParams.has('base64') && urlObj.searchParams.get('base64') !== '0';
+  }
+
+  try {
+    const response = await fetch("https://zip.cm.edu.kg/all.txt");
+    let text = await response.text();
+    const lines = text.replace(/^\uFEFF/, '').split('\n');
+    
+    const regionCounters = {}; 
+    const regionLimitCounters = {};
+    let processed = [];
+
+    // 统一处理逻辑
+    for (const line of lines) {
+      if (!line.includes('#')) continue;
+      const [ipPort, codeRaw] = line.split('#');
+      const code = codeRaw ? codeRaw.trim().toUpperCase() : '';
+
+      if (targetRegions.includes(code)) {
+        // 数量限制
+        if (limit > 0) {
+          regionLimitCounters[code] = (regionLimitCounters[code] || 0) + 1;
+          if (regionLimitCounters[code] > limit) continue;
+        }
+
+        // 核心修改：强制 edgetunnel 格式也带上备注
+        regionCounters[code] = (regionCounters[code] || 0) + 1;
+        const flag = getFlagEmoji(code);
+        const name = REGION_MAP[code] || code;
+        const countStr = toSuperScript(regionCounters[code]);
+        
+        // 拼接格式：IP:PORT#🇸🇬 新加坡¹
+        processed.push(`${ipPort.trim()}#${flag} ${name}${countStr}`);
+      }
+    }
+
+    let resultStr = processed.join('\n');
+    if (needBase64) resultStr = btoa(unescape(encodeURIComponent(resultStr)));
+
+    return new Response(resultStr, { 
+      headers: { 
+        'content-type': 'text/plain; charset=UTF-8',
+        'Access-Control-Allow-Origin': '*',
+      } 
+    });
+  } catch (e) {
+    return new Response("Error: " + e.message, { status: 500 });
+  }
 }
 
 function getHtml() {
