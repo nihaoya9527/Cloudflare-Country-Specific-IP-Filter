@@ -1,25 +1,45 @@
-/* ================== 1. 登录系统与全局工具 ================== */
-const WORKER_PASSWORD = ''; // 可在此设置密码
+/* ================== 1. 登录系统与全局配置 ================== */
+const WORKER_PASSWORD = ''; // 您可以直接在这里设置密码，或在环境变量设置 ACCESS_PASSWORD
 const PASSWORD_ENV_KEY = 'ACCESS_PASSWORD';
 const COOKIE_NAME = 'GXNAS_AUTH';
+
+// 地区名称映射
+const REGION_MAP = {
+  'US':'美国','GB':'英国','DE':'德国','FR':'法国','NL':'荷兰','JP':'日本','KR':'韩国',
+  'SG':'新加坡','CA':'加拿大','AU':'澳大利亚','IN':'印度','TR':'土耳其','TH':'泰国',
+  'ID':'印尼','MY':'马来西亚','VN':'越南','PH':'菲律宾','BR':'巴西','ZA':'南非',
+  'IT':'意大利','ES':'西班牙','RU':'俄罗斯','HK':'香港','TW':'台湾','SE':'瑞典',
+  'FI':'芬兰','PL':'波兰','CH':'瑞士','AE':'阿联酋','IL':'以色列','EE':'爱沙尼亚',
+  'MD':'摩尔多瓦','CZ':'捷克','LV':'拉脱维亚','AL':'阿尔巴尼亚','SI':'斯洛文尼亚',
+  'BG':'保加利亚','BE':'比利时','IE':'爱尔兰','RO':'罗马尼亚','IS':'冰岛',
+  'LT':'立托宛','AT':'奥地利','DK':'丹麦','NO':'挪威','PT':'葡萄牙','GR':'希腊',
+  'HU':'匈牙利','NZ':'新西兰','MX':'墨西哥','AR':'阿根廷','CL':'智利',
+  'UA':'乌克兰','KZ':'哈萨克斯坦','SA':'沙特','QA':'卡塔尔',
+  'SK':'斯洛伐克','HR':'克罗地亚','LU':'卢森堡','RS':'塞尔维亚'
+};
+
+/* ================== 2. 工具函数 ================== */
 
 function getPassword(env) {
   return env?.[PASSWORD_ENV_KEY] || WORKER_PASSWORD;
 }
+
 function passwordConfigured(env) {
   const pw = getPassword(env);
   return typeof pw === 'string' && pw.length > 0;
 }
+
 function isLoggedIn(request, env) {
   const cookie = request.headers.get('Cookie') || '';
   const m = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
   return m && m[1] === btoa(getPassword(env));
 }
+
 function redirect(loc) {
   return new Response(null, { status: 302, headers: { Location: loc } });
 }
 
-// 数字转上标
+// 数字转上标（用于 edgetunnel 序号）
 function toSuperScript(num) {
   const map = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
   return num.toString().split('').map(c => map[c] || c).join('');
@@ -37,20 +57,7 @@ function loginPage(error = false) {
   });
 }
 
-/* ================== 2. 核心业务逻辑 ================== */
-const REGION_MAP = {
-  'US':'美国','GB':'英国','DE':'德国','FR':'法国','NL':'荷兰','JP':'日本','KR':'韩国',
-  'SG':'新加坡','CA':'加拿大','AU':'澳大利亚','IN':'印度','TR':'土耳其','TH':'泰国',
-  'ID':'印尼','MY':'马来西亚','VN':'越南','PH':'菲律宾','BR':'巴西','ZA':'南非',
-  'IT':'意大利','ES':'西班牙','RU':'俄罗斯','HK':'香港','TW':'台湾','SE':'瑞典',
-  'FI':'芬兰','PL':'波兰','CH':'瑞士','AE':'阿联酋','IL':'以色列','EE':'爱沙尼亚',
-  'MD':'摩尔多瓦','CZ':'捷克','LV':'拉脱维亚','AL':'阿尔巴尼亚','SI':'斯洛文尼亚',
-  'BG':'保加利亚','BE':'比利时','IE':'爱尔兰','RO':'罗马尼亚','IS':'冰岛',
-  'LT':'立陶宛','AT':'奥地利','DK':'丹麦','NO':'挪威','PT':'葡萄牙','GR':'希腊',
-  'HU':'匈牙利','NZ':'新西兰','MX':'墨西哥','AR':'阿根廷','CL':'智利',
-  'UA':'乌克兰','KZ':'哈萨克斯坦','SA':'沙特','QA':'卡塔尔',
-  'SK':'斯洛伐克','HR':'克罗地亚','LU':'卢森堡','RS':'塞尔维亚'
-};
+/* ================== 3. Fetch 核心逻辑 ================== */
 
 export default {
   async fetch(request, env) {
@@ -60,6 +67,7 @@ export default {
 
     const url = new URL(request.url);
 
+    // 登录路由
     if (url.pathname === '/login') {
       if (request.method === 'POST') {
         const fd = await request.formData();
@@ -77,8 +85,10 @@ export default {
       return loginPage();
     }
 
+    // 权限校验
     if (!isLoggedIn(request, env)) return redirect('/login');
 
+    // 跨域
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         headers: {
@@ -89,16 +99,16 @@ export default {
       });
     }
 
-    // 路由解析
-    const limit = parseInt(url.searchParams.get('limit')) || 0;
+    // 订阅路径解析
     const rawPath = decodeURIComponent(url.pathname);
     const pathMatches = rawPath.replace(/\/+$/, '').match(/^\/(CFnew|edgetunnel)\/(.+)$/);
         
     if (pathMatches) {
       const type = pathMatches[1];
       const regions = pathMatches[2];
-      // 如果是 CFnew，使用原始逗号分隔格式；如果是 edgetunnel，使用带备注的换行格式
-      const format = (type === 'CFnew') ? 'cf_comma_short' : 'line';
+      const limit = parseInt(url.searchParams.get('limit')) || 0;
+      // 这里的关键：CFnew 传 'cf_comma'，edgetunnel 传 'line'
+      const format = (type === 'CFnew') ? 'cf_comma' : 'line';
       return handleRawRequest(regions, format, limit, request.url);
     }
 
@@ -109,7 +119,7 @@ export default {
   }
 };
 
-/* ================== 3. 数据处理函数 ================== */
+/* ================== 4. 业务处理函数 ================== */
 
 async function handleGetRegions() {
   try {
@@ -136,6 +146,7 @@ async function handleApiRequest(url) {
 
 async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null) {
   const targetRegions = decodeURIComponent(regionStr).split(/[,-]/).map(r => r.trim().toUpperCase()).filter(r => r);
+  
   let needBase64 = false;
   if (requestUrl) {
     const urlObj = new URL(requestUrl);
@@ -151,8 +162,8 @@ async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null)
     const regionLimitCounters = {};
     let processed = [];
 
-    // 判断是否为 CFnew 这种逗号分隔的格式
-    const isCommaFormat = format.includes('comma');
+    // format 包含 comma 说明是 CFnew 格式
+    const isCFnew = format.includes('comma');
 
     for (const line of lines) {
       if (!line.includes('#')) continue;
@@ -165,27 +176,31 @@ async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null)
           if (regionLimitCounters[code] > limit) continue;
         }
 
-        regionCounters[code] = (regionCounters[code] || 0) + 1;
-        const flag = getFlagEmoji(code);
-        const name = REGION_MAP[code] || code;
-        const countStr = toSuperScript(regionCounters[code]);
-        
-        // 核心逻辑：如果是 edgetunnel (line 格式)，添加备注；如果是 CFnew (comma 格式)，保持原样
-        if (isCommaFormat) {
+        if (isCFnew) {
+          // CFnew 格式：只要纯 IP:PORT
           processed.push(ipPort.trim());
         } else {
+          // edgetunnel 格式：IP:PORT#Emoji 国家序号
+          regionCounters[code] = (regionCounters[code] || 0) + 1;
+          const flag = getFlagEmoji(code);
+          const name = REGION_MAP[code] || code;
+          const countStr = toSuperScript(regionCounters[code]);
           processed.push(`${ipPort.trim()}#${flag} ${name}${countStr}`);
         }
       }
     }
 
-    const separator = isCommaFormat ? ',' : '\n';
+    // CFnew 用逗号，edgetunnel 用换行
+    const separator = isCFnew ? ',' : '\n';
     let resultStr = processed.join(separator);
-    
+
     if (needBase64) resultStr = btoa(unescape(encodeURIComponent(resultStr)));
 
     return new Response(resultStr, { 
-      headers: { 'content-type': 'text/plain; charset=UTF-8', 'Access-Control-Allow-Origin': '*' } 
+      headers: { 
+        'content-type': 'text/plain; charset=UTF-8',
+        'Access-Control-Allow-Origin': '*',
+      } 
     });
   } catch (e) {
     return new Response("Error: " + e.message, { status: 500 });
