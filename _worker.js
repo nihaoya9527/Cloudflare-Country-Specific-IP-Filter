@@ -1,6 +1,7 @@
-const WORKER_PASSWORD = ''; // 你可以直接在此写入默认密码
+/* ================== 1. 登录系统与全局工具 ================== */
+const WORKER_PASSWORD = ''; // 可在此设置密码
 const PASSWORD_ENV_KEY = 'ACCESS_PASSWORD';
-const COOKIE_NAME = 'Cloudflare_Country_Specific_IP_Filter_AUTH';
+const COOKIE_NAME = 'GXNAS_AUTH';
 
 function getPassword(env) {
   return env?.[PASSWORD_ENV_KEY] || WORKER_PASSWORD;
@@ -18,25 +19,25 @@ function redirect(loc) {
   return new Response(null, { status: 302, headers: { Location: loc } });
 }
 
-// 补全缺失的工具函数：数字转上标
+// 数字转上标
 function toSuperScript(num) {
   const map = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
   return num.toString().split('').map(c => map[c] || c).join('');
 }
 
-// 补全缺失的工具函数：获取国旗 Emoji
+// 获取国旗 Emoji
 function getFlagEmoji(countryCode) {
   if (countryCode === 'TW') return '🇹🇼';
   return countryCode.toUpperCase().replace(/./g, char => String.fromCodePoint(char.charCodeAt(0) + 127397));
 }
 
 function loginPage(error = false) {
-  return new Response(`<!doctype html><meta charset="utf-8"><title>访问验证</title><style>body{background:#020617;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.box{width:360px;padding:32px;border:1px solid #334155;border-radius:16px;background:#0f172a}input,button{width:100%;padding:12px;border-radius:8px;font-size:16px;box-sizing:border-box}input{background:#020617;border:1px solid #334155;color:#fff;margin-bottom:16px}button{border:none;background:#2563eb;color:#fff;cursor:pointer}button:hover{background:#1d4ed8}.err{color:#f87171;margin-top:12px;text-align:center}</style><div class="box"><h2>🔐 请输入访问密码</h2><form method="post"><input type="password" name="password" required autofocus placeholder="Password"><button>进入系统</button>${error ? '<div class="err">密码错误</div>' : ''}</form></div>`, {
+  return new Response(`<!doctype html><meta charset="utf-8"><title>访问验证</title><style>body{background:#020617;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.box{width:360px;padding:32px;border:1px solid #334155;border-radius:16px;background:#0f172a}input,button{width:100%;padding:12px;border-radius:8px;font-size:16px;box-sizing:border-box}input{background:#020617;border:1px solid #334155;color:#fff;margin-bottom:16px}button{border:none;background:#2563eb;color:#fff;cursor:pointer}button:hover{background:#1d4ed8}.err{color:#f87171;margin-top:12px;text-align:center}</style><div class="box"><h2>🔐 请输入访问密码</h2><form method="post"><input type="password" name="password" required autofocus><button>进入系统</button>${error ? '<div class="err">密码错误</div>' : ''}</form></div>`, {
     headers: { 'content-type': 'text/html;charset=utf-8' }
   });
 }
 
-/* ================== 2. 核心逻辑 ================== */
+/* ================== 2. 核心业务逻辑 ================== */
 const REGION_MAP = {
   'US':'美国','GB':'英国','DE':'德国','FR':'法国','NL':'荷兰','JP':'日本','KR':'韩国',
   'SG':'新加坡','CA':'加拿大','AU':'澳大利亚','IN':'印度','TR':'土耳其','TH':'泰国',
@@ -59,7 +60,6 @@ export default {
 
     const url = new URL(request.url);
 
-    // 登录路由处理
     if (url.pathname === '/login') {
       if (request.method === 'POST') {
         const fd = await request.formData();
@@ -77,10 +77,7 @@ export default {
       return loginPage();
     }
 
-    // 鉴权
-    if (!isLoggedIn(request, env)) {
-      return redirect('/login');
-    }
+    if (!isLoggedIn(request, env)) return redirect('/login');
 
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -92,15 +89,17 @@ export default {
       });
     }
 
-    // 业务路由解析
+    // 路由解析
     const limit = parseInt(url.searchParams.get('limit')) || 0;
     const rawPath = decodeURIComponent(url.pathname);
     const pathMatches = rawPath.replace(/\/+$/, '').match(/^\/(CFnew|edgetunnel)\/(.+)$/);
         
     if (pathMatches) {
+      const type = pathMatches[1];
       const regions = pathMatches[2];
-      // 强制使用带名称和备注的格式
-      return handleRawRequest(regions, 'cf_line_short', limit, request.url);
+      // 如果是 CFnew，使用原始逗号分隔格式；如果是 edgetunnel，使用带备注的换行格式
+      const format = (type === 'CFnew') ? 'cf_comma_short' : 'line';
+      return handleRawRequest(regions, format, limit, request.url);
     }
 
     if (url.searchParams.has('api')) return handleApiRequest(url);
@@ -110,7 +109,7 @@ export default {
   }
 };
 
-/* ================== 3. 业务处理函数 ================== */
+/* ================== 3. 数据处理函数 ================== */
 
 async function handleGetRegions() {
   try {
@@ -131,14 +130,12 @@ async function handleGetRegions() {
 
 async function handleApiRequest(url) {
   const regions = url.searchParams.get('region')?.split(',') || [];
-  // 强制 API 也返回带备注的格式
-  return handleRawRequest(regions.join(','), 'cf_line_short', 0, url.toString());
+  const format = url.searchParams.get('format') || 'line';
+  return handleRawRequest(regions.join(','), format, 0, url.toString());
 }
 
 async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null) {
-  const decoded = decodeURIComponent(regionStr);
-  const targetRegions = decoded.split(/[,-]/).map(r => r.trim().toUpperCase()).filter(r => r);
-  
+  const targetRegions = decodeURIComponent(regionStr).split(/[,-]/).map(r => r.trim().toUpperCase()).filter(r => r);
   let needBase64 = false;
   if (requestUrl) {
     const urlObj = new URL(requestUrl);
@@ -154,39 +151,41 @@ async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null)
     const regionLimitCounters = {};
     let processed = [];
 
+    // 判断是否为 CFnew 这种逗号分隔的格式
+    const isCommaFormat = format.includes('comma');
+
     for (const line of lines) {
       if (!line.includes('#')) continue;
-      
-      const parts = line.split('#');
-      const ipPort = parts[0].trim();
-      const code = parts[1] ? parts[1].trim().toUpperCase() : '';
+      const [ipPort, codeRaw] = line.split('#');
+      const code = codeRaw ? codeRaw.trim().toUpperCase() : '';
 
       if (targetRegions.includes(code)) {
         if (limit > 0) {
-          const currentCount = (regionLimitCounters[code] || 0) + 1;
-          if (currentCount > limit) continue;
-          regionLimitCounters[code] = currentCount;
+          regionLimitCounters[code] = (regionLimitCounters[code] || 0) + 1;
+          if (regionLimitCounters[code] > limit) continue;
         }
 
-        // 统一格式逻辑：不管是 CFnew 还是 edgetunnel，都生成备注
         regionCounters[code] = (regionCounters[code] || 0) + 1;
         const flag = getFlagEmoji(code);
         const name = REGION_MAP[code] || code;
         const countStr = toSuperScript(regionCounters[code]);
         
-        // 生成格式：IP:PORT#🇸🇬 新加坡¹
-        processed.push(`${ipPort}#${flag} ${name}${countStr}`);
+        // 核心逻辑：如果是 edgetunnel (line 格式)，添加备注；如果是 CFnew (comma 格式)，保持原样
+        if (isCommaFormat) {
+          processed.push(ipPort.trim());
+        } else {
+          processed.push(`${ipPort.trim()}#${flag} ${name}${countStr}`);
+        }
       }
     }
 
-    let resultStr = processed.join('\n');
+    const separator = isCommaFormat ? ',' : '\n';
+    let resultStr = processed.join(separator);
+    
     if (needBase64) resultStr = btoa(unescape(encodeURIComponent(resultStr)));
 
     return new Response(resultStr, { 
-      headers: { 
-        'content-type': 'text/plain; charset=UTF-8',
-        'Access-Control-Allow-Origin': '*',
-      } 
+      headers: { 'content-type': 'text/plain; charset=UTF-8', 'Access-Control-Allow-Origin': '*' } 
     });
   } catch (e) {
     return new Response("Error: " + e.message, { status: 500 });
