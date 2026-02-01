@@ -1,4 +1,3 @@
-/* ================== 登录系统（外壳，不改内部逻辑） ================== */
 const WORKER_PASSWORD = ''; // Workers 可直接写
 const PASSWORD_ENV_KEY = 'ACCESS_PASSWORD';
 const COOKIE_NAME = 'GXNAS_AUTH';
@@ -40,63 +39,45 @@ ${error ? '<div class="err">密码错误</div>' : ''}
     headers: { 'content-type': 'text/html;charset=utf-8' }
   });
 }
-
-/* ================== 以下开始：你的原始代码（完整保留） ================== */
-
 /**
  * 地区名称映射
  */
 const REGION_MAP = {
-  'US':'美国','GB':'英国','DE':'德国','FR':'法国','NL':'荷兰','JP':'日本','KR':'韩国',
-  'SG':'新加坡','CA':'加拿大','AU':'澳大利亚','IN':'印度','TR':'土耳其','TH':'泰国',
-  'ID':'印尼','MY':'马来西亚','VN':'越南','PH':'菲律宾','BR':'巴西','ZA':'南非',
-  'IT':'意大利','ES':'西班牙','RU':'俄罗斯','HK':'香港','TW':'台湾','SE':'瑞典',
-  'FI':'芬兰','PL':'波兰','CH':'瑞士','AE':'阿联酋','IL':'以色列','EE':'爱沙尼亚',
-  'MD':'摩尔多瓦','CZ':'捷克','LV':'拉脱维亚','AL':'阿尔巴尼亚','SI':'斯洛文尼亚',
-  'BG':'保加利亚','BE':'比利时','IE':'爱尔兰','RO':'罗马尼亚','IS':'冰岛',
-  'LT':'立陶宛','AT':'奥地利','DK':'丹麦','NO':'挪威','PT':'葡萄牙','GR':'希腊',
-  'HU':'匈牙利','NZ':'新西兰','MX':'墨西哥','AR':'阿根廷','CL':'智利',
-  'UA':'乌克兰','KZ':'哈萨克斯坦','SA':'沙特','QA':'卡塔尔',
-  'SK':'斯洛伐克','HR':'克罗地亚','LU':'卢森堡','RS':'塞尔维亚'
+    'US': '美国', 'GB': '英国', 'DE': '德国', 'FR': '法国', 'NL': '荷兰',
+    'JP': '日本', 'KR': '韩国', 'SG': '新加坡', 'CA': '加拿大', 'AU': '澳大利亚',
+    'IN': '印度', 'TR': '土耳其', 'TH': '泰国', 'ID': '印尼', 'MY': '马来西亚',
+    'VN': '越南', 'PH': '菲律宾', 'BR': '巴西', 'ZA': '南非', 'IT': '意大利',
+    'ES': '西班牙', 'RU': '俄罗斯', 'HK': '香港', 'TW': '台湾', 'SE': '瑞典',
+    'FI': '芬兰', 'PL': '波兰', 'CH': '瑞士', 'AE': '阿联酋', 'IL': '以色列',
+    'EE': '爱沙尼亚', 'MD': '摩尔多瓦', 'CZ': '捷克', 'LV': '拉脱维亚',
+    'AL': '阿尔巴尼亚', 'SI': '斯洛文尼亚', 'BG': '保加利亚', 'BE': '比利时',
+    'IE': '爱尔兰', 'RO': '罗马尼亚', 'IS': '冰岛', 'LT': '立陶宛',
+    'AT': '奥地利', 'DK': '丹麦', 'NO': '挪威', 'PT': '葡萄牙', 'GR': '希腊',
+    'HU': '匈牙利', 'NZ': '新西兰', 'MX': '墨西哥', 'AR': '阿根廷', 'CL': '智利',
+    'UA': '乌克兰', 'KZ': '哈萨克斯坦', 'SA': '沙特', 'QA': '卡塔尔',
+    'SK': '斯洛伐克', 'HR': '克罗地亚', 'LU': '卢森堡', 'RS': '塞尔维亚'
 };
 
-/* ……中间所有原始函数：getFlagEmoji / handleGetRegions /
-      handleApiRequest / handleRawRequest / getHtml
-      **全部保持你原文件内容，一字未删** …… */
+/**
+ * 辅助函数：获取国旗 Emoji
+ */
+function getFlagEmoji(code) {
+    if (code === 'TW') return '🇹🇼';
+    if (code === 'UK') return '🇬🇧';
+    if (!code || code.length !== 2) return '🇺🇳'; 
+    const codePoints = code.toUpperCase().split('').map(char => 127397 + char.charCodeAt());
+    return String.fromCodePoint(...codePoints);
+}
 
-/* ================== fetch：只在最外层加登录壳 ================== */
+/**
+ * 辅助函数：数字转上标
+ */
+function toSuperScript(num) {
+    const supers = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+    return num.toString().split('').map(c => supers[c] || c).join('');
+}
+
 export default {
-  async fetch(request, env) {
-
-    if (!passwordConfigured(env)) {
-      return new Response('ACCESS_PASSWORD 未设置，服务已禁用', { status: 500 });
-    }
-
-    const url = new URL(request.url);
-
-    // 登录
-    if (url.pathname === '/login') {
-      if (request.method === 'POST') {
-        const fd = await request.formData();
-        if (fd.get('password') === getPassword(env)) {
-          return new Response(null, {
-            status: 302,
-            headers: {
-              'Set-Cookie': `${COOKIE_NAME}=${btoa(getPassword(env))}; Path=/; HttpOnly; SameSite=Strict`,
-              'Location': '/'
-            }
-          });
-        }
-        return loginPage(true);
-      }
-      return loginPage();
-    }
-
-    // 未登录不允许进入原逻辑
-    if (!isLoggedIn(request, env)) {
-      return redirect('/login');
-    }
-
     async fetch(request, env) {
         if (request.method === 'OPTIONS') {
             return new Response(null, {
