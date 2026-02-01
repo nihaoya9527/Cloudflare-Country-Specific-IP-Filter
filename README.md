@@ -12,12 +12,13 @@
   </p>
 
   <p>
-    <span style="vertical-align: middle; font-weight: bold;">特别鸣谢：</span>
-    <a href="https://github.com/cmliu/edgetunnel">
-      <img src="https://img.shields.io/badge/GitHub-CM%E5%A4%A7%E4%BD%AC-181717?style=flat-square&logo=github&logoColor=white" alt="CM大佬">
+    <span style="vertical-align: middle; font-weight: bold; margin-right: 10px;">特别鸣谢：</span>
+    <a href="https://github.com/cmliu/edgetunnel" target="_blank" style="text-decoration: none;">
+      <img src="https://img.shields.io/badge/GitHub-CM%E5%A4%A7%E4%BD%AC-181717?style=flat-square&logo=github&logoColor=white" alt="CM大佬" style="vertical-align: middle;">
     </a>
-    <a href="https://github.com/byJoey/cfnew">
-      <img src="https://img.shields.io/badge/GitHub-Joey%E5%A4%A7%E4%BD%AC-181717?style=flat-square&logo=github&logoColor=white" alt="Joey大佬">
+    <span style="margin: 0 5px;"></span>
+    <a href="https://github.com/byJoey/cfnew" target="_blank" style="text-decoration: none;">
+      <img src="https://img.shields.io/badge/GitHub-Joey%E5%A4%A7%E4%BD%AC-181717?style=flat-square&logo=github&logoColor=white" alt="Joey大佬" style="vertical-align: middle;">
     </a>
   </p>
 
