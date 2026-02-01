@@ -82,41 +82,6 @@ export default {
       return redirect('/login');
     }
 
-export default {
-    async fetch(request, env) {
-        if (request.method === 'OPTIONS') {
-            return new Response(null, {
-                headers: {
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                    'Access-Control-Allow-Headers': '*'
-                }
-            });
-        }
-        const url = new URL(request.url);
-
-        // 获取 limit 参数
-        const limit = parseInt(url.searchParams.get('limit')) || 0;
-
-        // 路径路由
-        const rawPath = decodeURIComponent(url.pathname);
-        const pathMatches = rawPath.replace(/\/+$/, '')
-            .match(/^\/(CFnew|edgetunnel)\/(.+)$/);
-            
-        if (pathMatches) {
-            const type = pathMatches[1];
-            const regions = pathMatches[2];
-            const format = type === 'CFnew' ? 'cf_line_short' : 'line';
-            return handleRawRequest(regions, format, limit, request.url);
-        }
-
-        if (url.searchParams.has('api')) return handleApiRequest(url);
-        if (url.searchParams.has('get_regions')) return handleGetRegions();
-        
-        return new Response(getHtml(), { headers: { 'content-type': 'text/html; charset=UTF-8' } });
-    }
-};
-
 async function handleGetRegions() {
     try {
         const res = await fetch("https://zip.cm.edu.kg/all.txt");
