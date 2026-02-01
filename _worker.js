@@ -1,65 +1,25 @@
-/**
- * =================================================
- * 登录 & 密码配置
- * =================================================
- */
 const WORKER_PASSWORD = ''; // Workers 可直接写
 const PASSWORD_ENV_KEY = 'ACCESS_PASSWORD';
 const COOKIE_NAME = 'GXNAS_AUTH';
 
-/**
- * =================================================
- * 地区名称映射
- * =================================================
- */
-const REGION_MAP = {
-    'US':'美国','GB':'英国','DE':'德国','FR':'法国','NL':'荷兰','JP':'日本','KR':'韩国',
-    'SG':'新加坡','CA':'加拿大','AU':'澳大利亚','IN':'印度','TR':'土耳其','TH':'泰国',
-    'ID':'印尼','MY':'马来西亚','VN':'越南','PH':'菲律宾','BR':'巴西','ZA':'南非',
-    'IT':'意大利','ES':'西班牙','RU':'俄罗斯','HK':'香港','TW':'台湾','SE':'瑞典',
-    'FI':'芬兰','PL':'波兰','CH':'瑞士','AE':'阿联酋','IL':'以色列','EE':'爱沙尼亚',
-    'MD':'摩尔多瓦','CZ':'捷克','LV':'拉脱维亚','AL':'阿尔巴尼亚','SI':'斯洛文尼亚',
-    'BG':'保加利亚','BE':'比利时','IE':'爱尔兰','RO':'罗马尼亚','IS':'冰岛',
-    'LT':'立陶宛','AT':'奥地利','DK':'丹麦','NO':'挪威','PT':'葡萄牙','GR':'希腊',
-    'HU':'匈牙利','NZ':'新西兰','MX':'墨西哥','AR':'阿根廷','CL':'智利',
-    'UA':'乌克兰','KZ':'哈萨克斯坦','SA':'沙特','QA':'卡塔尔',
-    'SK':'斯洛伐克','HR':'克罗地亚','LU':'卢森堡','RS':'塞尔维亚'
-};
-
-/**
- * =================================================
- * 工具函数
- * =================================================
- */
 function getPassword(env) {
-    return env?.[PASSWORD_ENV_KEY] || WORKER_PASSWORD;
+  return env?.[PASSWORD_ENV_KEY] || WORKER_PASSWORD;
 }
+
 function passwordConfigured(env) {
-    return typeof getPassword(env) === 'string' && getPassword(env).length > 0;
+  return typeof getPassword(env) === 'string' && getPassword(env).length > 0;
 }
+
 function isLoggedIn(request, env) {
-    const cookie = request.headers.get('Cookie') || '';
-    const m = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
-    return m && m[1] === btoa(getPassword(env));
+  const cookie = request.headers.get('Cookie') || '';
+  const m = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+  return m && m[1] === btoa(getPassword(env));
 }
+
 function redirect(loc) {
-    return new Response(null, { status: 302, headers: { Location: loc } });
+  return new Response(null, { status: 302, headers: { Location: loc } });
 }
 
-function getFlagEmoji(code) {
-    if (!code || code.length !== 2) return '🇺🇳';
-    return String.fromCodePoint(...code.toUpperCase().split('').map(c => 127397 + c.charCodeAt()));
-}
-function toSuperScript(num) {
-    const s = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹'};
-    return num.toString().split('').map(c => s[c]).join('');
-}
-
-/**
- * =================================================
- * 登录页
- * =================================================
- */
 function loginPage(error=false) {
 return new Response(`<!DOCTYPE html>
 <html lang="zh-CN">
@@ -89,77 +49,175 @@ ${error ? '<div class="err">密码错误</div>' : ''}
 </html>`, { headers:{'content-type':'text/html;charset=UTF-8'}});
 }
 
-/**
- * =================================================
- * Worker 主入口
- * =================================================
- */
 export default {
-async fetch(request, env) {
+  async fetch(request, env) {
 
+    // 未设置密码，直接禁止
     if (!passwordConfigured(env)) {
-        return new Response('ACCESS_PASSWORD 未设置，服务已禁用', { status: 500 });
+      return new Response('ACCESS_PASSWORD 未设置，服务已禁用', { status: 500 });
     }
 
     const url = new URL(request.url);
 
-    // 登录处理
+    // 登录页
     if (url.pathname === '/login') {
-        if (request.method === 'POST') {
-            const fd = await request.formData();
-            if (fd.get('password') === getPassword(env)) {
-                return new Response(null, {
-                    status: 302,
-                    headers: {
-                        'Set-Cookie': `${COOKIE_NAME}=${btoa(getPassword(env))}; Path=/; HttpOnly; SameSite=Strict`,
-                        'Location': '/'
-                    }
-                });
-            }
-            return loginPage(true);
-        }
-        return loginPage();
-    }
-
-    // 未登录直接跳登录页
-    if (!isLoggedIn(request, env)) {
-        return redirect('/login');
-    }
-
-    // ===== 原始逻辑（仅做最小必要修改） =====
-
-    if (request.method === 'OPTIONS') {
-        return new Response(null, {
+      if (request.method === 'POST') {
+        const fd = await request.formData();
+        if (fd.get('password') === getPassword(env)) {
+          return new Response(null, {
+            status: 302,
             headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                'Access-Control-Allow-Headers': '*'
+              'Set-Cookie': `${COOKIE_NAME}=${btoa(getPassword(env))}; Path=/; HttpOnly; SameSite=Strict`,
+              'Location': '/'
             }
-        });
+          });
+        }
+        return loginPage(true);
+      }
+      return loginPage();
     }
 
-    const limit = parseInt(url.searchParams.get('limit')) || 0;
-    const rawPath = decodeURIComponent(url.pathname);
-    const match = rawPath.replace(/\/+$/, '').match(/^\/(CFnew|edgetunnel)\/(.+)$/);
-
-    if (match) {
-        // 🔥 不再区分 CFnew / edgetunnel，统一命名
-        return handleRawRequest(match[2], 'cf_line_short', limit, request.url);
+    // 未登录 → 不允许进入原逻辑
+    if (!isLoggedIn(request, env)) {
+      return redirect('/login');
     }
 
-    if (url.searchParams.has('api')) return handleApiRequest(url);
-    if (url.searchParams.has('get_regions')) return handleGetRegions();
+export default {
+    async fetch(request, env) {
+        if (request.method === 'OPTIONS') {
+            return new Response(null, {
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                    'Access-Control-Allow-Headers': '*'
+                }
+            });
+        }
+        const url = new URL(request.url);
 
-    // 👉 登录成功后，返回你原来的完整界面
-    return new Response(getHtml(), { headers:{'content-type':'text/html; charset=UTF-8'} });
-}
+        // 获取 limit 参数
+        const limit = parseInt(url.searchParams.get('limit')) || 0;
+
+        // 路径路由
+        const rawPath = decodeURIComponent(url.pathname);
+        const pathMatches = rawPath.replace(/\/+$/, '')
+            .match(/^\/(CFnew|edgetunnel)\/(.+)$/);
+            
+        if (pathMatches) {
+            const type = pathMatches[1];
+            const regions = pathMatches[2];
+            const format = type === 'CFnew' ? 'cf_line_short' : 'line';
+            return handleRawRequest(regions, format, limit, request.url);
+        }
+
+        if (url.searchParams.has('api')) return handleApiRequest(url);
+        if (url.searchParams.has('get_regions')) return handleGetRegions();
+        
+        return new Response(getHtml(), { headers: { 'content-type': 'text/html; charset=UTF-8' } });
+    }
 };
 
-/**
- * =================================================
- * 后端函数 & getHtml()
- * =================================================
- */
+async function handleGetRegions() {
+    try {
+        const res = await fetch("https://zip.cm.edu.kg/all.txt");
+        const text = await res.text();
+        const matches = text.match(/#[A-Z]+/g) || [];
+        const counts = {};
+        matches.forEach(tag => {
+            const region = tag.replace('#', '');
+            counts[region] = (counts[region] || 0) + 1;
+        });
+        const regions = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+        return new Response(JSON.stringify(regions), { headers: { 'content-type': 'application/json' } });
+    } catch (e) {
+        return new Response('[]', { headers: { 'content-type': 'application/json' } });
+    }
+}
+
+async function handleApiRequest(url) {
+    const regions = url.searchParams.get('region')?.split(',') || [];
+    const format = url.searchParams.get('format') || 'line';
+    return handleRawRequest(regions.join(','), format, 0, url.toString());
+}
+
+async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null) {
+    const decoded = decodeURIComponent(regionStr);
+    
+    const targetRegions = decoded.split(/[,-]/)
+                                 .map(r => r.trim().toUpperCase())
+                                 .filter(r => r);
+    
+    let needBase64 = false;
+    if (requestUrl) {
+        const urlObj = new URL(requestUrl);
+        needBase64 = urlObj.searchParams.has('base64') && urlObj.searchParams.get('base64') !== '0';
+    }
+
+    try {
+        const response = await fetch("https://zip.cm.edu.kg/all.txt");
+        let text = await response.text();
+        text = text.replace(/^\uFEFF/, '');
+        
+        const lines = text.split('\n');
+        const regionCounters = {}; 
+        const regionLimitCounters = {};
+        let processed = [];
+
+        const isCFStyle = format.startsWith('cf') || format === 'comma';
+        const isShortName = format.includes('short');
+        const isLineSeparated = format.includes('line');
+
+        for (const line of lines) {
+            if (!line.includes('#')) continue;
+            
+            const parts = line.split('#');
+            const ipPort = parts[0].trim();
+            const code = parts[1] ? parts[1].trim().toUpperCase() : '';
+
+            if (targetRegions.includes(code)) {
+                if (limit > 0) {
+                    const currentCount = (regionLimitCounters[code] || 0) + 1;
+                    if (currentCount > limit) continue;
+                    regionLimitCounters[code] = currentCount;
+                }
+
+                if (isCFStyle) {
+                    regionCounters[code] = (regionCounters[code] || 0) + 1;
+                    const flag = getFlagEmoji(code);
+                    const name = REGION_MAP[code] || code;
+                    const countStr = toSuperScript(regionCounters[code]);
+                    const port = ipPort.split(':')[1] || ''; 
+                    
+                    let nodeName = `${flag} ${name}${countStr}`;
+                    if (!isShortName) nodeName += `-${port}`;
+                    
+                    processed.push(`${ipPort}#${nodeName}`);
+                } else {
+                    processed.push(ipPort);
+                }
+            }
+        }
+
+        const separator = (format.includes('comma') && !isLineSeparated) ? ',' : '\n';
+        let resultStr = processed.join(separator);
+
+        if (needBase64) {
+            resultStr = btoa(unescape(encodeURIComponent(resultStr)));
+        }
+
+        return new Response(resultStr, { 
+            headers: { 
+                'content-type': 'text/plain; charset=UTF-8',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET,HEAD,POST,OPTIONS',
+                'Access-Control-Max-Age': '86400',
+            } 
+        });
+
+    } catch (e) {
+        return new Response("Error fetching data: " + e.message, { status: 500 });
+    }
+}
 
 function getHtml() {
     return `
@@ -580,4 +638,3 @@ class="flex items-center gap-3 px-4 py-2 rounded-2xl bg-gradient-to-r from-gray-
 </html>
     `;
 }
-
