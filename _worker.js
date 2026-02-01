@@ -1,9 +1,42 @@
-/* ================== 1. 登录系统与全局配置 ================== */
-const WORKER_PASSWORD = ''; // 您可以直接在此写默认密码，或在环境变量设置 ACCESS_PASSWORD
+const WORKER_PASSWORD = ''; // 你可以直接在此写入默认密码
 const PASSWORD_ENV_KEY = 'ACCESS_PASSWORD';
-const COOKIE_NAME = 'GXNAS_AUTH';
+const COOKIE_NAME = 'Cloudflare_Country_Specific_IP_Filter_AUTH';
 
-// 地区名称映射
+function getPassword(env) {
+  return env?.[PASSWORD_ENV_KEY] || WORKER_PASSWORD;
+}
+function passwordConfigured(env) {
+  const pw = getPassword(env);
+  return typeof pw === 'string' && pw.length > 0;
+}
+function isLoggedIn(request, env) {
+  const cookie = request.headers.get('Cookie') || '';
+  const m = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+  return m && m[1] === btoa(getPassword(env));
+}
+function redirect(loc) {
+  return new Response(null, { status: 302, headers: { Location: loc } });
+}
+
+// 补全缺失的工具函数：数字转上标
+function toSuperScript(num) {
+  const map = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+  return num.toString().split('').map(c => map[c] || c).join('');
+}
+
+// 补全缺失的工具函数：获取国旗 Emoji
+function getFlagEmoji(countryCode) {
+  if (countryCode === 'TW') return '🇹🇼';
+  return countryCode.toUpperCase().replace(/./g, char => String.fromCodePoint(char.charCodeAt(0) + 127397));
+}
+
+function loginPage(error = false) {
+  return new Response(`<!doctype html><meta charset="utf-8"><title>访问验证</title><style>body{background:#020617;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.box{width:360px;padding:32px;border:1px solid #334155;border-radius:16px;background:#0f172a}input,button{width:100%;padding:12px;border-radius:8px;font-size:16px;box-sizing:border-box}input{background:#020617;border:1px solid #334155;color:#fff;margin-bottom:16px}button{border:none;background:#2563eb;color:#fff;cursor:pointer}button:hover{background:#1d4ed8}.err{color:#f87171;margin-top:12px;text-align:center}</style><div class="box"><h2>🔐 请输入访问密码</h2><form method="post"><input type="password" name="password" required autofocus placeholder="Password"><button>进入系统</button>${error ? '<div class="err">密码错误</div>' : ''}</form></div>`, {
+    headers: { 'content-type': 'text/html;charset=utf-8' }
+  });
+}
+
+/* ================== 2. 核心逻辑 ================== */
 const REGION_MAP = {
   'US':'美国','GB':'英国','DE':'德国','FR':'法国','NL':'荷兰','JP':'日本','KR':'韩国',
   'SG':'新加坡','CA':'加拿大','AU':'澳大利亚','IN':'印度','TR':'土耳其','TH':'泰国',
@@ -18,47 +51,6 @@ const REGION_MAP = {
   'SK':'斯洛伐克','HR':'克罗地亚','LU':'卢森堡','RS':'塞尔维亚'
 };
 
-/* ================== 2. 工具函数 ================== */
-
-function getPassword(env) {
-  return env?.[PASSWORD_ENV_KEY] || WORKER_PASSWORD;
-}
-
-function passwordConfigured(env) {
-  const pw = getPassword(env);
-  return typeof pw === 'string' && pw.length > 0;
-}
-
-function isLoggedIn(request, env) {
-  const cookie = request.headers.get('Cookie') || '';
-  const m = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
-  return m && m[1] === btoa(getPassword(env));
-}
-
-function redirect(loc) {
-  return new Response(null, { status: 302, headers: { Location: loc } });
-}
-
-// 补全：数字转上标（用于序号）
-function toSuperScript(num) {
-  const map = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
-  return num.toString().split('').map(c => map[c] || c).join('');
-}
-
-// 补全：获取国旗 Emoji
-function getFlagEmoji(countryCode) {
-  if (countryCode === 'TW') return '🇹🇼';
-  return countryCode.toUpperCase().replace(/./g, char => String.fromCodePoint(char.charCodeAt(0) + 127397));
-}
-
-function loginPage(error = false) {
-  return new Response(`<!doctype html><meta charset="utf-8"><title>访问验证</title><style>body{background:#020617;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.box{width:360px;padding:32px;border:1px solid #334155;border-radius:16px;background:#0f172a}input,button{width:100%;padding:12px;border-radius:8px;font-size:16px;box-sizing:border-box}input{background:#020617;border:1px solid #334155;color:#fff;margin-bottom:16px}button{border:none;background:#2563eb;color:#fff;cursor:pointer}button:hover{background:#1d4ed8}.err{color:#f87171;margin-top:12px;text-align:center}</style><div class="box"><h2>🔐 请输入访问密码</h2><form method="post"><input type="password" name="password" required autofocus><button>进入系统</button>${error ? '<div class="err">密码错误</div>' : ''}</form></div>`, {
-    headers: { 'content-type': 'text/html;charset=utf-8' }
-  });
-}
-
-/* ================== 3. Fetch 核心逻辑 ================== */
-
 export default {
   async fetch(request, env) {
     if (!passwordConfigured(env)) {
@@ -67,7 +59,7 @@ export default {
 
     const url = new URL(request.url);
 
-    // 路由：登录
+    // 登录路由处理
     if (url.pathname === '/login') {
       if (request.method === 'POST') {
         const fd = await request.formData();
@@ -85,12 +77,11 @@ export default {
       return loginPage();
     }
 
-    // 鉴权拦截
+    // 鉴权
     if (!isLoggedIn(request, env)) {
       return redirect('/login');
     }
 
-    // 跨域处理
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         headers: {
@@ -101,25 +92,25 @@ export default {
       });
     }
 
-    // 业务路由
-    if (url.searchParams.has('get_regions')) return handleGetRegions();
-    if (url.searchParams.has('api')) return handleApiRequest(url);
-
-    // 订阅路径路由 /type/region1-region2
+    // 业务路由解析
+    const limit = parseInt(url.searchParams.get('limit')) || 0;
     const rawPath = decodeURIComponent(url.pathname);
     const pathMatches = rawPath.replace(/\/+$/, '').match(/^\/(CFnew|edgetunnel)\/(.+)$/);
+        
     if (pathMatches) {
       const regions = pathMatches[2];
-      const limit = parseInt(url.searchParams.get('limit')) || 0;
-      // 统一调用：强制返回带 Emoji 和 序号的格式
+      // 强制使用带名称和备注的格式
       return handleRawRequest(regions, 'cf_line_short', limit, request.url);
     }
 
+    if (url.searchParams.has('api')) return handleApiRequest(url);
+    if (url.searchParams.has('get_regions')) return handleGetRegions();
+    
     return new Response(getHtml(), { headers: { 'content-type': 'text/html; charset=UTF-8' } });
   }
 };
 
-/* ================== 4. 业务处理函数 ================== */
+/* ================== 3. 业务处理函数 ================== */
 
 async function handleGetRegions() {
   try {
@@ -140,11 +131,13 @@ async function handleGetRegions() {
 
 async function handleApiRequest(url) {
   const regions = url.searchParams.get('region')?.split(',') || [];
+  // 强制 API 也返回带备注的格式
   return handleRawRequest(regions.join(','), 'cf_line_short', 0, url.toString());
 }
 
 async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null) {
-  const targetRegions = decodeURIComponent(regionStr).split(/[,-]/).map(r => r.trim().toUpperCase()).filter(r => r);
+  const decoded = decodeURIComponent(regionStr);
+  const targetRegions = decoded.split(/[,-]/).map(r => r.trim().toUpperCase()).filter(r => r);
   
   let needBase64 = false;
   if (requestUrl) {
@@ -163,22 +156,26 @@ async function handleRawRequest(regionStr, format, limit = 0, requestUrl = null)
 
     for (const line of lines) {
       if (!line.includes('#')) continue;
-      const [ipPort, codeRaw] = line.split('#');
-      const code = codeRaw ? codeRaw.trim().toUpperCase() : '';
+      
+      const parts = line.split('#');
+      const ipPort = parts[0].trim();
+      const code = parts[1] ? parts[1].trim().toUpperCase() : '';
 
       if (targetRegions.includes(code)) {
         if (limit > 0) {
-          regionLimitCounters[code] = (regionLimitCounters[code] || 0) + 1;
-          if (regionLimitCounters[code] > limit) continue;
+          const currentCount = (regionLimitCounters[code] || 0) + 1;
+          if (currentCount > limit) continue;
+          regionLimitCounters[code] = currentCount;
         }
 
+        // 统一格式逻辑：不管是 CFnew 还是 edgetunnel，都生成备注
         regionCounters[code] = (regionCounters[code] || 0) + 1;
         const flag = getFlagEmoji(code);
         const name = REGION_MAP[code] || code;
         const countStr = toSuperScript(regionCounters[code]);
         
-        // 统一格式：IP:PORT#Emoji 国家序号
-        processed.push(`${ipPort.trim()}#${flag} ${name}${countStr}`);
+        // 生成格式：IP:PORT#🇸🇬 新加坡¹
+        processed.push(`${ipPort}#${flag} ${name}${countStr}`);
       }
     }
 
