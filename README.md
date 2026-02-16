@@ -8,7 +8,7 @@
   </p>
 
   <p style="color: #ff4d4f; font-weight: bold; margin-bottom: 20px;">
-    此项目完全公益性质，🚫 禁止商用，请遵守当地法律法规使用
+    此项目完全公益性质，🚫 禁止商用，请遵守当地法律法规使用，建议绑定自定义域
   </p>
 
   <div style="margin-bottom: 20px;">
